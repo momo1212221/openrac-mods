@@ -63,7 +63,7 @@ std::filesystem::path preferences_path(openrac::Mod& mod) {
 }
 
 const char* words(const char* en, const char* fr, const char* de, const char* es, const char* it) {
-    const auto address = g->pal ? 0x15EE88u : 0x15ED88u;
+    const auto address = g->mod->relocate(g->pal ? 0x15EE88u : 0x15ED88u);
     switch (g->mod->memory().read<int32_t>(address)) {
         case 2:
             return fr;
@@ -320,13 +320,22 @@ void pad(int port, uint8_t* report, int size) {
             return;
         }
         auto look = read<V>(camera);
-        const auto up = kbm::unit_or(read<V>(block + KBM_CAMERAS_UP), kbm::kWorldUp);
+        const auto hero = g->mod->relocate(g->disc->hero);
+        const auto moby = valid(hero) ? read<uint32_t>(hero + KBM_HERO_MOBY) : 0;
+        const auto up = valid(moby)
+                            ? kbm::unit_or(read<V>(moby + 0xE0u), kbm::kWorldUp)
+                            : kbm::kWorldUp;
         look = kbm::rotate(look, up, yaw);
         float old = read<float>(state + KBM_FIRST_PERSON_TILT);
         if (std::isfinite(old)) {
-            float now =
-                std::clamp(old + pitch, -kbm::kFirstPersonTiltLimit, kbm::kFirstPersonTiltLimit);
-            look = kbm::with_elevation(look, up, kbm::elevation(look, up) - (now - old));
+            const float wanted = old + pitch;
+            const float now = std::clamp(
+                wanted, -kbm::kFirstPersonTiltLimit, kbm::kFirstPersonTiltLimit
+            );
+            const float moved = std::clamp(
+                old, -kbm::kFirstPersonTiltLimit, kbm::kFirstPersonTiltLimit
+            );
+            look = kbm::with_elevation(look, up, kbm::elevation(look, up) - (now - moved));
             write(state + KBM_FIRST_PERSON_TILT, now);
         }
         write(camera, look);

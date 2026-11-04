@@ -141,6 +141,9 @@ int main(int argc, char** argv) {
             };
             api.hook = hook;
             api.relocate_data = [](uint32_t p) {
+                if (p == 0x15EE88u || p == 0x15ED88u) {
+                    return p + 0x1000u;
+                }
                 return p;
             };
             api.relocate_level_data = [](int, uint32_t p) {
@@ -296,6 +299,9 @@ int main(int argc, char** argv) {
             // First-person tilt, with bounded pitch, uses the direct path too.
             at<int16_t>(camera + 0x86) = 4;
             at<V>(camera) = {1, 0, 0};
+            constexpr uint32_t moby = 0x120000;
+            at<uint32_t>(hero + 0x2080) = moby;
+            at<V>(moby + 0xE0) = {0, 1, 0};
             input.captured = 1;
             input.mouse_dx = 0;
             input.mouse_dy = 0;
@@ -303,17 +309,28 @@ int main(int argc, char** argv) {
             report[3] = 128;
             input.tick++;
             pad(pad_user, 0, report, 6);
-            // Aiming applies its own 75% factor to the 200% controller camera speed.
-            CHECK(
-                std::abs(at<V>(camera).y - std::sin(-240 * .01745329252f / 60 * 2 * .75f)) < .0001f
-            );
+            // Gravity-boots/rotated hero frames use Ratchet's moby up axis, not the follow camera up.
+            CHECK(std::abs(at<V>(camera).y) < .0001f);
+            CHECK(std::abs(at<V>(camera).z) > .0001f);
+
+            // Clamp the stored tilt before computing the view delta: zero new pitch must not snap.
+            at<V>(moby + 0xE0) = {0, 0, 1};
+            at<V>(camera) = {1, 0, 0};
+            at<float>(state + 0x10) = 1.2f;
+            report[2] = report[3] = 128;
+            input.mouse_dx = input.mouse_dy = 0;
+            input.tick++;
+            pad(pad_user, 0, report, 6);
+            CHECK(std::abs(at<V>(camera).x - 1) < .0001f && std::abs(at<V>(camera).y) < .0001f
+                  && std::abs(at<V>(camera).z) < .0001f);
+
             report[2] = 128;
             input.mouse_dy = 100000;
             input.tick++;
             pad(pad_user, 0, report, 6);
             CHECK(at<float>(state + 0x10) < 1.118f && at<float>(state + 0x10) > 1.116f);
             // Native settings: real 1..100 positions through three moving choices.
-            at<int32_t>(pal ? 0x15EE88 : 0x15ED88) = 3;
+            at<int32_t>((pal ? 0x15EE88 : 0x15ED88) + 0x1000) = 3;
             ui_event(OPENRAC_UI_SHOW);
             CHECK(title == "Steuerung");
             CHECK(shown.find("75/100") != std::string::npos);
