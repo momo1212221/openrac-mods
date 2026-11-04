@@ -20,10 +20,12 @@ int main() {
     CHECK(deck::axis(0.1f, 100) == 128);
     CHECK(deck::axis(std::numeric_limits<float>::quiet_NaN(), 100) == 128);
     CHECK(deck::axis(std::numeric_limits<float>::infinity(), 100) == 128);
-    CHECK(deck::axis(1, 100) > 166);
-    CHECK(deck::axis(-1, 100) < 90);
+    CHECK(deck::raw_axis_active(deck::axis(0.2f, 100)));
+    CHECK(deck::raw_axis_active(deck::axis(-0.2f, 100)));
+    CHECK(deck::axis(1, 100) > 175);
+    CHECK(deck::axis(-1, 100) < 79);
     CHECK(deck::axis(10000, 100) == 255);
-    CHECK(deck::axis(-10000, 100) == 1);
+    CHECK(deck::axis(-10000, 100) == 0);
     CHECK(deck::axis(2, 50) < deck::axis(2, 200));
     deck::Settings settings;
     deck::Motion motion;
@@ -42,9 +44,17 @@ int main() {
     CHECK(report[2] == 199 && report[3] == 90);
     CHECK(report[0] == 0x23 && report[1] == 0x45 && report[4] == 55 && report[5] == 200);
     CHECK(report[6] == 0xAA && report[7] == 0xBB);
-    report[2] = 255;
+    report[2] = static_cast<std::uint8_t>(deck::kStickCentreByte + deck::kStickDeadBytes);
+    report[3] = 128;
+    deck::apply(report.data(), report.size(), {199, 90});
+    CHECK(report[2] == 199 && report[3] == 90);
+    report[2] = static_cast<std::uint8_t>(deck::kStickCentreByte + deck::kStickDeadBytes + 1);
+    report[3] = 128;
     deck::apply(report.data(), report.size(), {30, 30});
-    CHECK(report[2] == 255 && report[3] == 90);  // Physical stick priority, both axes.
+    CHECK(report[2] == deck::kStickCentreByte + deck::kStickDeadBytes + 1 && report[3] == 128);
+    report[2] = static_cast<std::uint8_t>(deck::kStickCentreByte - deck::kStickDeadBytes - 1);
+    deck::apply(report.data(), report.size(), {220, 220});
+    CHECK(report[2] == deck::kStickCentreByte - deck::kStickDeadBytes - 1 && report[3] == 128);
     const auto before = report;
     deck::apply(report.data(), 4, {0, 0});
     deck::apply(nullptr, 8, {0, 0});

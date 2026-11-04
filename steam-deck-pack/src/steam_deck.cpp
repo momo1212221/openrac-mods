@@ -27,7 +27,8 @@ std::unique_ptr<State> g;
 
 // Original UI text; the PAL language word uses 0/1 English, 2 French, 3 German, 4 Spanish, 5 Italian.
 const char* words(const char* en, const char* fr, const char* de, const char* es, const char* it) {
-    const auto address = g->mod->version() == "pal" ? 0x0015EE88u : 0x0015ED88u;
+    const auto address =
+        g->mod->relocate(g->mod->version() == "pal" ? 0x0015EE88u : 0x0015ED88u);
     const int language = g->mod->memory().read<std::int32_t>(address);
     switch (language) {
         case 2:

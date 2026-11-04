@@ -61,17 +61,29 @@ struct Stick {
     std::uint8_t y = 128;
 };
 
+inline constexpr std::uint8_t kStickRestByte = 0x80;
+inline constexpr int kStickCentreByte = 0x7f;
+inline constexpr int kStickDeadBytes = 0x30;
+
+inline bool raw_axis_active(std::uint8_t b) {
+    return std::abs(static_cast<int>(b) - kStickCentreByte) > kStickDeadBytes;
+}
+
 // Steam Input produces mouse counts for both Gyro -> Mouse and the right trackpad. The SDK
 // does not expose their identities or raw sensors, so their relative gain is set in Steam.
 // Use the game's right stick: its camera modes and invert options keep their normal behaviour.
 inline std::uint8_t axis(float delta, int gain) {
     if (!std::isfinite(delta) || std::fabs(delta) < 0.15f) {
-        return 128;
+        return kStickRestByte;
     }
-    // Cross the game's approximately 0.3 stick dead zone without a nonzero idle output.
-    const float magnitude = std::min(127.0f, 39.0f + std::fabs(delta) * gain * 0.04f);
-    const int signed_value = static_cast<int>(std::lround(std::copysign(magnitude, delta)));
-    return static_cast<std::uint8_t>(std::clamp(128 + signed_value, 0, 255));
+    // RAC1 counts from 0x7f and ignores the first 0x30 bytes. Start synthesized movement one byte
+    // beyond that real dead zone, while keeping larger mouse motion proportional to sensitivity.
+    const float max_distance = delta > 0.0f ? 128.0f : 127.0f;
+    const float distance = std::min(
+        max_distance, static_cast<float>(kStickDeadBytes + 1) + std::fabs(delta) * gain * 0.04f
+    );
+    const float raw = static_cast<float>(kStickCentreByte) + std::copysign(distance, delta);
+    return static_cast<std::uint8_t>(std::clamp(static_cast<int>(std::lround(raw)), 0, 255));
 }
 
 class Motion {
@@ -101,12 +113,12 @@ inline void apply(std::uint8_t* report, int size, Stick mouse) {
     if (report == nullptr || size < 6) {
         return;
     }
-    // A physical stick outside the game's dead zone takes priority; buttons/left stick untouched.
-    if (std::abs(static_cast<int>(report[2]) - 128) > 38
-        || std::abs(static_cast<int>(report[3]) - 128) > 38) {
+    // Only physical input RAC1 itself reads as nonzero takes priority. Raw values still inside the
+    // game's dead zone must not suppress gyro/trackpad camera input.
+    if (raw_axis_active(report[2]) || raw_axis_active(report[3])) {
         return;
     }
-    if (mouse.x != 128 || mouse.y != 128) {
+    if (mouse.x != kStickRestByte || mouse.y != kStickRestByte) {
         report[2] = mouse.x;
         report[3] = mouse.y;
     }
