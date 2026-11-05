@@ -1453,28 +1453,35 @@ bool World::hit(const Hit& h) {
     }
 
     // A member: a hit on the host's world goes to the host (the host's world hits its own).
-    if (driven_.count(h.victim) == 0) {
+    // Do not require the victim to be in driven_ here. A placed/spawned host-world moby can be
+    // hit in the short window before its drive state is established (or after that state was
+    // refreshed); dropping that hit makes client damage disappear while the host can still kill
+    // the same enemy. The network id plus the non-local class is the stable authority test.
+    if (!coop_.playing() || level_ != coop_.host_level()) {
         return false;
     }
 
+    const auto victim = mobys_.find(h.victim);
+    const std::uint16_t id = id_of(h.victim);
+    if (victim == mobys_.end() || victim->second.oclass == 0 || local_class(victim->second.oclass)
+        || id == kNoId) {
+        return false;
+    }
+
+    // Hits made by the host-world copy itself have already happened on the host.
     if (driven_.count(h.attacker) != 0) {
         return true;
     }
 
-    const std::uint16_t id = id_of(h.victim);
-
-    if (id != kNoId) {
-        Writer w;
-        w.u8(static_cast<std::uint8_t>(WorldKind::kHit));
-        u16(w, id);
-        w.i32(static_cast<std::int32_t>(h.mask));
-        f32(w, h.damage);
-        vec(w, h.position);
-        vec(w, h.velocity);
-        session_.send_data(session_.host(), w.bytes());
-        ++counts_.hits;
-    }
-
+    Writer w;
+    w.u8(static_cast<std::uint8_t>(WorldKind::kHit));
+    u16(w, id);
+    w.i32(static_cast<std::int32_t>(h.mask));
+    f32(w, h.damage);
+    vec(w, h.position);
+    vec(w, h.velocity);
+    session_.send_data(session_.host(), w.bytes());
+    ++counts_.hits;
     return true;
 }
 

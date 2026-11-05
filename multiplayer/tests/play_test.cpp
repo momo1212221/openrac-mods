@@ -727,6 +727,7 @@ struct FakeGame : mp::Game {
     // hero's moby is slot 99, figure id N is slot 100 + N.
     std::vector<mp::MobyState> level;
     std::set<int> drives;
+    bool allow_drive = true;
     std::vector<std::string> world_calls;
     std::vector<mp::Hit> hits;
     int stood = 0;
@@ -746,6 +747,9 @@ struct FakeGame : mp::Game {
     }
 
     bool moby_drive(int slot, bool on) override {
+        if (on && !allow_drive) {
+            return false;
+        }
         if (on) {
             drives.insert(slot);
         } else {
@@ -1326,6 +1330,39 @@ void the_world_is_the_hosts() {
     tick({&host, &member}, 50);
     CHECK(member.game.moby_slot(0) == -1 && member.world.spawned() == 0);
     CHECK(member.game.moby_slot(2) == 2 && member.game.moby_slot(1) == -1);
+}
+
+// A member can hit a host-world enemy even while its local drive state is not ready yet. The
+// network id and class still identify it as host-authoritative, so the hit must reach the host.
+void a_member_hit_survives_a_late_drive() {
+    Player host(1), member(2);
+    const std::vector<mp::Member> both = {{1, "P1"}, {2, "P2"}};
+    host.session.handle(info(both));
+    member.session.handle(info(both));
+    host.coop.choose({}, "New game");
+    CHECK(start_ready(host));
+    route({&host, &member});
+    tick({&host, &member}, 16);
+
+    const std::uint32_t runs = mp::kMobyUpdates | mp::kMobyPlaced;
+    for (Player* p : {&host, &member}) {
+        p->game.now = {mp::kPhasePlaying, 0, 2};
+        p->game.level = {moby(0, 0, 300, runs | mp::kMobyCreature, 10.0f)};
+    }
+    member.game.allow_drive = false;
+    for (int i = 0; i < 20; ++i) {
+        tick({&host, &member}, 50);
+    }
+    CHECK(member.game.drives.empty());
+
+    mp::Hit wrench;
+    wrench.victim = 0;
+    wrench.attacker = 99;
+    wrench.mask = 0x10000;
+    wrench.damage = 1.0f;
+    CHECK(member.world.hit(wrench));
+    route({&host, &member});
+    CHECK(host.game.hits.size() == 1 && host.game.hits[0].victim == 0);
 }
 
 // An enemy the host's game hides (its update: one waiting to appear) is hidden in the member's,
@@ -3631,6 +3668,7 @@ int main() {
     a_member_out_of_the_game_asks_for_it();
     world_bytes();
     the_world_is_the_hosts();
+    a_member_hit_survives_a_late_drive();
     the_hosts_hidden_mobys_are_hidden_here();
     the_despawn_log_says_who_and_why();
     the_world_logs_its_despawns();
