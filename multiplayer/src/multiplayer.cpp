@@ -111,6 +111,7 @@ enum class DirectView {
  * (grant_inventory_item) and UnlockPlanet (unlock_planet). */
 struct ProgressDisc {
     const char* version;
+    openrac::gaddr hero;
     openrac::gaddr items;
     openrac::gaddr gold;
     openrac::gaddr planets;
@@ -119,8 +120,8 @@ struct ProgressDisc {
 };
 
 constexpr ProgressDisc kProgressDiscs[] = {
-    {"pal", 0x0013D5C8u, 0x0014BFC0u, 0x0013DE48u, "func_L00_002618D8", "func_L00_00261848"},
-    {"ntsc", 0x0013D4C0u, 0x0014BEC0u, 0x0013DD40u, "FUN_L00_00260860", "FUN_L00_002607d0"},
+    {"pal", 0x0013F450u, 0x0013D5C8u, 0x0014BFC0u, 0x0013DE48u, "func_L00_002618D8", "func_L00_00261848"},
+    {"ntsc", 0x0013F350u, 0x0013D4C0u, 0x0014BEC0u, 0x0013DD40u, "FUN_L00_00260860", "FUN_L00_002607d0"},
 };
 
 class ModGame : public mp::Game {
@@ -158,6 +159,16 @@ public:
             held_from_sdk(held, out);
         }
 
+        return true;
+    }
+
+    bool hero_health_set(int health) override {
+        const ProgressDisc* disc = progress_disc();
+        if (disc == nullptr || health < 0) {
+            return false;
+        }
+        constexpr openrac::gaddr kHeroHealth = 0x22A8u;
+        mod_.memory().write<std::int32_t>(mod_.relocate(disc->hero) + kHeroHealth, health);
         return true;
     }
 
@@ -293,6 +304,23 @@ public:
     }
 
     bool hit(const mp::Hit& h) override {
+        // Interface 1.12 has a dedicated path for damage to this game's Ratchet. A remote
+        // player's damage used to be replayed as a moby hit on the hero, but the hero is not a
+        // normal world moby for damage purposes and that can leave a member effectively
+        // invulnerable. Prefer the game's own hero damage routine when the port offers it.
+        const int hero = mod_.figure_slot(-1);
+        if (h.victim == hero && mod_.has_api_12()) {
+            const int damage = h.damage > 0.0f ? std::max(1, static_cast<int>(h.damage + 0.999f)) : 0;
+            const int health = mod_.hero_hurt(damage);
+            if (health >= 0) {
+                mod_.info(
+                    "multiplayer: remote damage " + std::to_string(damage)
+                    + " applied to Ratchet (health " + std::to_string(health) + ")"
+                );
+                return true;
+            }
+        }
+
         openrac_hit out{};
         out.victim = h.victim;
         out.attacker = h.attacker;

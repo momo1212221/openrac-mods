@@ -148,6 +148,7 @@ void World::reset() {
     shared_.clear();
     members_.clear();
     standing_ = 0;
+    health_before_ = -1;
     driven_.clear();
     poses_.clear();
     posed_at_.clear();
@@ -1375,7 +1376,10 @@ bool World::gate(int slot, int phase) {
     }
 
     if (phase != 0) {
-        // The bolts a member's stand-in collected are that member's.
+        // The bolts a member's stand-in collected are that member's. Some RAC1 enemy attacks
+        // change the global Hero health directly instead of posting a moby hit. While the host
+        // has stood the hero in at a member, that damage belongs to the member: restore the
+        // host's health and send the damage to that member.
         if (standing_ != 0) {
             const int delta = game_.bolts(0) - bolts_before_;
 
@@ -1384,7 +1388,29 @@ bool World::gate(int slot, int phase) {
                 members_[standing_].bolts += delta;
             }
 
+            Pose after;
+            if (health_before_ >= 0 && game_.hero(after) && after.health < health_before_) {
+                const int damage = health_before_ - after.health;
+                if (game_.hero_health_set(health_before_)) {
+                    Writer w;
+                    w.u8(static_cast<std::uint8_t>(WorldKind::kDamage));
+                    u16(w, kNoId);
+                    w.i32(0);
+                    f32(w, static_cast<float>(damage));
+                    const float zero[3] = {0, 0, 0};
+                    vec(w, zero);
+                    vec(w, zero);
+                    session_.send_data(standing_, w.bytes());
+                    ++counts_.damage;
+                    log(
+                        "redirected " + std::to_string(damage) + " hero damage to player "
+                        + std::to_string(standing_)
+                    );
+                }
+            }
+
             standing_ = 0;
+            health_before_ = -1;
         }
 
         return false;
@@ -1422,6 +1448,7 @@ bool World::gate(int slot, int phase) {
     if (nearest != 0 && game_.stand_in(at.position, coop_.figure_of(nearest))) {
         standing_ = nearest;
         bolts_before_ = game_.bolts(0);
+        health_before_ = hero.health;
     }
 
     return false;

@@ -370,6 +370,7 @@ private:
     std::map<std::int32_t, Member> members_;
     std::int32_t standing_ = 0;
     int bolts_before_ = 0;
+    int health_before_ = -1;
     /* Host: the bolts taken (granted to a member, or collected here), by id. */
     std::set<std::uint16_t> claimed_;
     /* The bolts flying to the player who took them (fly), by slot: who, that player's figure here

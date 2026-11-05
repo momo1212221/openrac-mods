@@ -284,6 +284,9 @@ public:
     /* The progress now, as a save; empty for none. */
     virtual Bytes capture() = 0;
     virtual bool hero(Pose& out) = 0;
+    /* Restore/set this game's hero health. Used by the host when a remote-player stand-in made
+     * the game's global hero health take that remote player's damage. */
+    virtual bool hero_health_set(int /*health*/) { return false; }
     /* A figure's id, -1 for none to have; posed (false: gone); removed. */
     virtual int figure_create() = 0;
     virtual bool figure_pose(int id, const Pose& pose) = 0;

@@ -690,6 +690,12 @@ struct FakeGame : mp::Game {
         return mp::in_level(now.phase);
     }
 
+    bool hero_health_set(int health) override {
+        hero_pose.health = health;
+        world_calls.push_back("health " + std::to_string(health));
+        return true;
+    }
+
     int figure_create() override {
         figures[next_figure] = mp::Pose{};
         return next_figure++;
@@ -1278,10 +1284,22 @@ void the_world_is_the_hosts() {
     CHECK(!host.world.gate(0, mp::kMobyAfter));
     CHECK(host.game.stood == before + 1 && host.game.world_calls.back().rfind("stand 12", 0) == 0);
     CHECK(host.game.bolt_count == 0);
+
+    // Some enemy attacks hurt the game's global Hero directly instead of posting a hit on the
+    // stand-in figure. That damage is restored on the host and sent to the member.
+    CHECK(!host.world.gate(0, mp::kMobyBefore));
+    host.game.hero_pose.health = 7;
+    CHECK(!host.world.gate(0, mp::kMobyAfter));
+    CHECK(host.game.hero_pose.health == 8);
+    route({&host, &member});
+    CHECK(member.game.hits.size() == 1 && member.game.hits[0].victim == 99);
+    CHECK(member.game.hits[0].damage == 1.0f);
+    member.game.hits.clear();
+
     // The crate's update keeps the host's hero.
     host.world.gate(1, mp::kMobyBefore);
     host.world.gate(1, mp::kMobyAfter);
-    CHECK(host.game.stood == before + 1);
+    CHECK(host.game.stood == before + 2);
     tick({&host, &member}, 50);
     CHECK(member.game.bolt_count == 25);
 
