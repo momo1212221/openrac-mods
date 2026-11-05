@@ -250,6 +250,8 @@ struct Hit {
     float damage = 0;
     float position[3] = {0, 0, 0};
     float velocity[3] = {0, 0, 0};
+    int source_oclass = 0;
+    float source_position[3] = {0, 0, 0};
 };
 
 /* How the game ran the level's mobys in the last tick, and one moby in it (the SDK's

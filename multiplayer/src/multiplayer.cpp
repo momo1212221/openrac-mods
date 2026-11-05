@@ -328,6 +328,8 @@ public:
         out.damage = h.damage;
         std::copy(h.position, h.position + 3, out.position);
         std::copy(h.velocity, h.velocity + 3, out.velocity);
+        out.source_oclass = h.source_oclass;
+        std::copy(h.source_position, h.source_position + 3, out.source_position);
         return mod_.moby_hit(out);
     }
 
@@ -1492,6 +1494,10 @@ void load(openrac::Mod& mod) {
         h.damage = hit->damage;
         std::copy(hit->position, hit->position + 3, h.position);
         std::copy(hit->velocity, hit->velocity + 3, h.velocity);
+        if (hit->size >= sizeof(openrac_hit)) {
+            h.source_oclass = hit->source_oclass;
+            std::copy(hit->source_position, hit->source_position + 3, h.source_position);
+        }
         return g->world->hit(h) ? 1 : 0;
     });
     g->home = mod.ui_page(on_home);

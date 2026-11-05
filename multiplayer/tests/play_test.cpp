@@ -1324,10 +1324,16 @@ void the_world_is_the_hosts() {
     wrench.attacker = 99;
     wrench.mask = 0x10000;
     wrench.damage = 1.0f;
+    wrench.source_oclass = 0x47;
+    wrench.source_position[0] = 12.0f;
+    wrench.source_position[1] = 13.0f;
+    wrench.source_position[2] = 14.0f;
     CHECK(member.world.hit(wrench));
     route({&host, &member});
     CHECK(host.game.hits.size() == 1 && host.game.hits[0].victim == 0 && host.game.hits[0].mask == 0x10000);
-    CHECK(host.game.hits[0].attacker == 99);
+    CHECK(host.game.hits[0].attacker == -1);
+    CHECK(host.game.hits[0].source_oclass == 0x47);
+    CHECK(host.game.hits[0].source_position[0] == 12.0f);
     // A hit on the member's own hero is its game's.
     wrench.victim = 99;
     CHECK(!member.world.hit(wrench));

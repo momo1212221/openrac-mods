@@ -1076,23 +1076,24 @@ void World::handle(std::int32_t sender, const Bytes& bytes) {
         h.damage = f32(r);
         vec(r, h.position);
         vec(r, h.velocity);
+        h.source_oclass = r.i32();
+        vec(r, h.source_position);
         h.victim = slot_of(id);
 
         if (!hosting_ || !r.ok() || h.victim < 0) {
             return;
         }
 
-        // The remote figure is a visual stand-in whose own shots are deliberately non-damaging in
-        // the OpenRAC core. Replaying a network hit with that figure as the attacker can leave the
-        // enemy with a synthetic figure where retail expects Ratchet. Use this game's real hero
-        // moby as the attacker; the member remains the authority for whether/where the hit happened.
-        h.attacker = game_.figure_slot(-1);
+        // The source weapon/projectile lives only in the member's game. Interface 1.13 preserves
+        // its oclass and position so the host can build a synthetic source for RAC1's retail hit
+        // response instead of substituting the host Hero.
+        h.attacker = -1;
         trace_line(
             "hit",
             "received HIT from " + std::to_string(sender) + " id " + std::to_string(id)
                 + " slot " + std::to_string(h.victim) + " mask " + std::to_string(h.mask)
-                + " damage " + std::to_string(h.damage) + " attacker hero slot "
-                + std::to_string(h.attacker)
+                + " damage " + std::to_string(h.damage) + " source oclass "
+                + std::to_string(h.source_oclass)
         );
         game_.hit(h);
         ++counts_.hits;
@@ -1522,11 +1523,14 @@ bool World::hit(const Hit& h) {
     f32(w, h.damage);
     vec(w, h.position);
     vec(w, h.velocity);
+    w.i32(h.source_oclass);
+    vec(w, h.source_position);
     session_.send_data(session_.host(), w.bytes());
     trace_line(
         "hit",
         "sent HIT id " + std::to_string(id) + " slot " + std::to_string(h.victim)
             + " mask " + std::to_string(h.mask) + " damage " + std::to_string(h.damage)
+            + " source oclass " + std::to_string(h.source_oclass)
     );
     ++counts_.hits;
     return true;
