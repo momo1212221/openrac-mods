@@ -101,9 +101,17 @@ bool Coop::start() {
     send_play(kBroadcast, chosen_, level);
     told_.clear();
 
-    for (const Member& m : session_.members()) {
-        if (m.id != session_.id()) {
-            told_.push_back(m.id);
+    // A loaded save already gives every machine the same serialized world. A new game does not:
+    // each machine can finish the opening/load with a different local moby state, which leaves the
+    // member able to see the host world but unable to produce valid combat hits for it. Keep the
+    // initial new-game members untold so tick_host() gives each of them one authoritative live save
+    // after the host reaches normal gameplay. This is the same synchronization path that makes a
+    // late join/rejoin combat-capable.
+    if (!chosen_.empty()) {
+        for (const Member& m : session_.members()) {
+            if (m.id != session_.id()) {
+                told_.push_back(m.id);
+            }
         }
     }
 
@@ -583,14 +591,18 @@ void Coop::tick_host(std::uint64_t now, const GameStatus& status) {
     for (const Member& m : session_.members()) {
         const bool told = std::find(told_.begin(), told_.end(), m.id) != told_.end();
 
-        if (m.id == session_.id() || told || !in_level(status.phase)) {
+        // Do not resynchronize a member from a scene/loading frame. The initial new-game members
+        // intentionally arrive here untold; waiting for normal play produces a stable authoritative
+        // save and avoids making them restart inside an opening cutscene. Late joiners wait here too.
+        if (m.id == session_.id() || told || status.phase != kPhasePlaying) {
             continue;
         }
 
         const Bytes live = game_.capture();
 
         if (!live.empty()) {
-            log("player " + std::to_string(m.id) + " joins the game in level " + std::to_string(status.level));
+            log("player " + std::to_string(m.id) + " is synchronized to the live game in level "
+                + std::to_string(status.level));
             send_play(m.id, live, status.level);
             told_.push_back(m.id);
         }

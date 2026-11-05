@@ -1139,9 +1139,20 @@ void a_new_game_and_a_late_member() {
     tick({&host, &member}, 16);
     CHECK((member.game.calls == std::vector<std::string>{"start 0 0"}));
 
-    // The host in level 0 with progress; a third joins: told the game unasked, the progress.
+    // Once the host has a stable live game, an initial new-game member is synchronized once from
+    // the host's serialized state. This uses the same path as a late join and keeps world/combat ids
+    // authoritative instead of leaving two independently-created new-game worlds.
     host.game.now = {mp::kPhasePlaying, 0, 2};
     host.game.live_save = Bytes(500, 3);
+    tick({&host, &member}, 16);
+    tick({&host, &member}, 16);
+    CHECK((member.game.calls == std::vector<std::string>{"start 0 0", "start 0 500"}));
+    CHECK(member.game.started_save == host.game.live_save);
+    const std::size_t synced_calls = member.game.calls.size();
+    tick({&host, &member}, 100);
+    CHECK(member.game.calls.size() == synced_calls);
+
+    // A third joins after the start: told the same live game unasked, once normal play is active.
     late.session.handle(info({{1, "P1"}, {2, "P2"}, {3, "P3"}}));
     mp::Message joined;
     joined.kind = mp::Message::Kind::kPartyJoined;
@@ -1163,7 +1174,7 @@ void a_new_game_and_a_late_member() {
     CHECK(member.coop.rejoin() && !host.coop.rejoin());
     tick({&host, &member, &late}, 16);
     tick({&host, &member, &late}, 16);
-    CHECK(member.game.calls.size() == 2 && member.game.calls.back() == "start 0 500");
+    CHECK(member.game.calls.size() == 3 && member.game.calls.back() == "start 0 500");
 
     // The late one's poses reach the member through the host, as figures in level 0.
     member.game.now = {mp::kPhasePlaying, 0, 4};
