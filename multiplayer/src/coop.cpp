@@ -969,14 +969,27 @@ bool Coop::hide_figure(std::int32_t player, Remote& r, bool hidden) {
         return true;
     }
 
+    // A figure made around the first level/scene transition can keep stale hero-class state. A
+    // real player death already fixes that by removing the figure and making a new one when the
+    // player's health returns. Do the same when a scene ends: it gives the remote a clean combat
+    // figure before normal play resumes, instead of reusing the pre-scene one.
+    if (!hidden && r.hidden) {
+        game_.figure_remove(r.figure);
+        r.figure = -1;
+        r.hidden = false;
+        r.shots.clear();
+        log("player " + std::to_string(player) + " figure refreshed after the scene");
+        return true;
+    }
+
     const int slot = game_.figure_slot(r.figure);
 
     if (slot < 0 || !game_.moby_hide(slot, hidden)) {
         return false;
     }
 
-    r.hidden = hidden;
-    log("player " + std::to_string(player) + (hidden ? " hidden for the scene" : " shown again"));
+    r.hidden = true;
+    log("player " + std::to_string(player) + " hidden for the scene");
     return true;
 }
 

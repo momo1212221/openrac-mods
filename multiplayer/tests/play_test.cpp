@@ -709,7 +709,10 @@ struct FakeGame : mp::Game {
         return true;
     }
 
-    void figure_remove(int id) override { figures.erase(id); }
+    void figure_remove(int id) override {
+        figures.erase(id);
+        hidden_figures.erase(id);
+    }
 
     // The hero's shots to give, and the figures' shots fired (figure id, shot).
     std::vector<mp::Shot> shots_out;
@@ -1313,7 +1316,7 @@ void the_world_is_the_hosts() {
     CHECK(member.world.hit(wrench));
     route({&host, &member});
     CHECK(host.game.hits.size() == 1 && host.game.hits[0].victim == 0 && host.game.hits[0].mask == 0x10000);
-    CHECK(host.game.hits[0].attacker == 100 + host.coop.figure_of(2));
+    CHECK(host.game.hits[0].attacker == 99);
     // A hit on the member's own hero is its game's.
     wrench.victim = 99;
     CHECK(!member.world.hit(wrench));
@@ -3249,17 +3252,20 @@ void figures_hide_in_a_scene() {
     }
     CHECK(member.game.shots_in.empty());
 
-    // The scene over: the same figure shown again, its pieces with it; no shot fired late.
+    // The scene over: the pre-scene figure is removed and a clean combat figure is made. Its
+    // pieces come back with the fresh figure and no shot from the scene is fired late.
     member.game.now = {mp::kPhasePlaying, 0, 2};
     for (int i = 0; i < 20; ++i) {
         tick({&host, &member}, 50);
     }
-    CHECK(member.game.hidden_figures.empty() && member.game.figures.count(figure) == 1);
-    CHECK(member.game.figures.size() == 1);
-    CHECK(SceneParty::logged(member_log, "player 1 shown again"));
-    CHECK((member.game.figures[figure].held[0].flags & mp::kHeldHidden) == 0);
+    CHECK(member.game.hidden_figures.empty());
+    CHECK(member.game.figures.size() == 1 && member.game.figures.count(figure) == 0);
+    const int refreshed = member.game.figures.begin()->first;
+    CHECK(refreshed != figure);
+    CHECK(SceneParty::logged(member_log, "player 1 figure refreshed after the scene"));
+    CHECK((member.game.figures[refreshed].held[0].flags & mp::kHeldHidden) == 0);
     CHECK(member.game.shots_in.empty());
-    // A shot now reaches the figure again.
+    // A shot now reaches the refreshed figure.
     host.game.shots_out.push_back(shot);
     for (int i = 0; i < 20; ++i) {
         tick({&host, &member}, 50);

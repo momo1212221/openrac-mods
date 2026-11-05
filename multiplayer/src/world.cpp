@@ -1082,9 +1082,18 @@ void World::handle(std::int32_t sender, const Bytes& bytes) {
             return;
         }
 
-        // From that player's figure, the hero's class (the enemies read the attacker's class).
-        const int figure = coop_.figure_of(sender);
-        h.attacker = figure >= 0 ? game_.figure_slot(figure) : game_.figure_slot(-1);
+        // The remote figure is a visual stand-in whose own shots are deliberately non-damaging in
+        // the OpenRAC core. Replaying a network hit with that figure as the attacker can leave the
+        // enemy with a synthetic figure where retail expects Ratchet. Use this game's real hero
+        // moby as the attacker; the member remains the authority for whether/where the hit happened.
+        h.attacker = game_.figure_slot(-1);
+        trace_line(
+            "hit",
+            "received HIT from " + std::to_string(sender) + " id " + std::to_string(id)
+                + " slot " + std::to_string(h.victim) + " mask " + std::to_string(h.mask)
+                + " damage " + std::to_string(h.damage) + " attacker hero slot "
+                + std::to_string(h.attacker)
+        );
         game_.hit(h);
         ++counts_.hits;
         return;
@@ -1449,6 +1458,12 @@ bool World::gate(int slot, int phase) {
         standing_ = nearest;
         bolts_before_ = game_.bolts(0);
         health_before_ = hero.health;
+        trace_line(
+            "stand",
+            "slot " + std::to_string(slot) + " stands in player " + std::to_string(nearest)
+                + " remote health " + std::to_string(at.health) + " host health "
+                + std::to_string(hero.health)
+        );
     }
 
     return false;
@@ -1508,6 +1523,11 @@ bool World::hit(const Hit& h) {
     vec(w, h.position);
     vec(w, h.velocity);
     session_.send_data(session_.host(), w.bytes());
+    trace_line(
+        "hit",
+        "sent HIT id " + std::to_string(id) + " slot " + std::to_string(h.victim)
+            + " mask " + std::to_string(h.mask) + " damage " + std::to_string(h.damage)
+    );
     ++counts_.hits;
     return true;
 }
