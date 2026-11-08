@@ -17,7 +17,7 @@ name: build
 
 on:
   push:
-    branches: [master, main]
+    branches: [master, main, arsenal-mastery-port]
     tags: ["v*", "*-v*"]
   pull_request:
   workflow_dispatch:
@@ -266,7 +266,7 @@ jobs:
   # A tag: every archive and SHA256SUMS on the tag's release, published, for the launcher.
   release:
     needs: merge
-    if: ${{ !cancelled() && needs.merge.result == 'success' && startsWith(github.ref, 'refs/tags/') }}
+    if: ${{ !cancelled() && needs.merge.result == 'success' && (startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/arsenal-mastery-port') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -284,7 +284,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ github.ref == 'refs/heads/arsenal-mastery-port' && 'arsenal-mastery-v0.1.0' || github.ref_name }}
         run: |
           sdk=$(python3 -c 'import json; print(json.load(open("sdk.lock"))["version"])')
           printf 'Built by the build workflow from %s, against the OpenRAC mod SDK %s.\n\nInstall: paste this repository'"'"'s address in the OpenRAC launcher'"'"'s Mods tab, or add a .zip there.\n' \
@@ -306,11 +306,16 @@ jobs:
           if gh release view "$TAG" > /dev/null 2>&1; then
             gh release upload "$TAG" --clobber dist/*
           else
-            gh release create "$TAG" --title "$TAG" --notes-file notes.md --verify-tag dist/*
+            if [ "$GITHUB_REF" = "refs/heads/arsenal-mastery-port" ]; then
+              gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" --notes-file notes.md dist/*
+            else
+              gh release create "$TAG" --title "$TAG" --notes-file notes.md --verify-tag dist/*
+            fi
           fi
       # A release made with this token starts no workflow, so index.yml's release event never comes:
       # start it from here. A dispatch is an event this token may start a workflow with.
       - name: Build the index with the new release
+        if: github.ref != 'refs/heads/arsenal-mastery-port'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
