@@ -394,7 +394,7 @@ void load(openrac::Mod& mod) {
     mod.on_frame(on_frame);
 
     mod.info(
-        std::string("Arsenal Mastery core port loaded on ") + mod.version()
+        std::string("Arsenal Mastery core port loaded on ") + std::string(mod.version())
         + "; V1-V5 progression enabled"
         + (sEnemyRebalance ? "; enemy rebalance enabled" : "; enemy rebalance off")
         + (sHardRebalance ? " (hard)" : "")
