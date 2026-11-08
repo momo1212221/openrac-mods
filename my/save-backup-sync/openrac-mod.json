@@ -1,0 +1,34 @@
+{
+  "format": 2,
+  "id": "save-backup-sync",
+  "name": "Backup & Cloud Saves",
+  "version": "0.1.0",
+  "author": "OpenRAC fork contributors",
+  "description": "Independent save backups, restore and folder-based cloud synchronization.",
+  "license": "GPL-3.0-or-later",
+  "homepage": "https://github.com/momo1212221/openrac-backup-cloud-saves",
+  "games": {
+    "rac1": [
+      "pal",
+      "ntsc",
+      "pal1",
+      "jp"
+    ],
+    "rac2": [
+      "ntsc",
+      "pal",
+      "ntsc2"
+    ],
+    "rac3": [
+      "ntsc"
+    ],
+    "rac4": [
+      "ntsc"
+    ]
+  },
+  "tool": {
+    "page": "ui/index.html",
+    "service": "save-backup-sync"
+  },
+  "multiplayer": "cosmetic"
+}

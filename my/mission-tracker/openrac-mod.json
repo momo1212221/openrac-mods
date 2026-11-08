@@ -1,0 +1,28 @@
+{
+  "format": 2,
+  "version": "0.1.0",
+  "author": "mo",
+  "license": "GPL-3.0-or-later",
+  "api": "1.9",
+  "games": {
+    "rac1": [
+      "pal",
+      "ntsc"
+    ]
+  },
+  "id": "mission-tracker",
+  "name": "Mission Tracker",
+  "description": "Tracks high-level campaign progress events and keeps a lightweight objective line based on the current planet, item gains and newly unlocked destinations.",
+  "hooks": [
+    "rac1.item.give",
+    "rac1.planet.unlock"
+  ],
+  "settings": [
+    {
+      "key": "persistent_objective",
+      "name": "Restore planet objective after progress notices",
+      "type": "bool",
+      "default": false
+    }
+  ]
+}

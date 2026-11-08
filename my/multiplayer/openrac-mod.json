@@ -1,0 +1,47 @@
+{
+  "format": 2,
+  "id": "multiplayer",
+  "name": "Multiplayer",
+  "version": "0.7.8",
+  "author": "OpenRAC contributors",
+  "description": "Online co-op: a Multiplayer item in the title's main menu, under Load Game, whose pages (the game's own menus) list the games others host, create one from a save or a new game, join one by its code, or play without a server with Direct connect. The host's Start starts the game for everyone: all play in the host's level, see each other's Ratchets, and share its world (its enemies go for the nearest player, a hit on one counts for all, crates and kills are shared, bolts go to whoever collects them).",
+  "license": "GPL-3.0-or-later",
+  "homepage": "https://github.com/OpenRAC/rac1-mods/tree/master/multiplayer",
+  "api": "1.9",
+  "games": {
+    "rac1": [
+      "pal",
+      "ntsc"
+    ]
+  },
+  "hooks": [
+    "rac1.moby.record_death",
+    "rac1.ship.travel_to",
+    "rac1.moby.collect_bolt"
+  ],
+  "settings": [
+    {
+      "key": "server",
+      "name": "Server",
+      "type": "string",
+      "default": "game.openrac.dev:7770",
+      "max_length": 255,
+      "description": "The OpenRAC server to connect to, as host:port (7770 when no port is given)."
+    },
+    {
+      "key": "name",
+      "name": "Name",
+      "type": "string",
+      "default": "${player_name}",
+      "max_length": 16,
+      "description": "Your name in multiplayer: 3 to 16 letters, digits or underscores. Defaults to the launcher's Multiplayer name."
+    },
+    {
+      "key": "verbose_log",
+      "name": "Verbose log",
+      "type": "bool",
+      "default": false,
+      "description": "For reports: an [mp-trace] line for each event of the party's world (pauses and the cameras under them, mobys left out of the game's updates by distance, hidden, shown or removed with who removed them and why, snapshots, drives, kills and spawns, a census each second), in mp-trace.log beside the game's run.log. Also on with OPENRAC_MP_TRACE=1."
+    }
+  ]
+}

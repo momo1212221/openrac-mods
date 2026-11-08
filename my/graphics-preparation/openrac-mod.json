@@ -1,0 +1,37 @@
+{
+  "format": 2,
+  "id": "graphics-preparation",
+  "name": "Graphics preparation",
+  "version": "0.17.0",
+  "author": "OpenRAC fork contributors",
+  "description": "One-package OpenRAC graphics preparation: AI texture/material authoring plus integrated native particle, glow and haze runtime.",
+  "license": "GPL-3.0-or-later",
+  "homepage": "https://github.com/momo1212221/openrac-graphics-preparation",
+  "type": "native",
+  "api": "1.14",
+  "games": {
+    "rac1": [
+      "pal",
+      "ntsc",
+      "pal1",
+      "jp"
+    ],
+    "rac2": [
+      "ntsc",
+      "pal",
+      "ntsc2"
+    ],
+    "rac3": [
+      "ntsc",
+      "pal"
+    ],
+    "rac4": [
+      "ntsc"
+    ]
+  },
+  "tool": {
+    "page": "ui/index.html"
+  },
+  "multiplayer": "cosmetic",
+  "assets": "assets"
+}

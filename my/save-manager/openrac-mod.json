@@ -1,0 +1,16 @@
+{
+  "format": 2,
+  "version": "0.2.0",
+  "author": "mo",
+  "license": "GPL-3.0-or-later",
+  "api": "1.9",
+  "games": {
+    "rac1": [
+      "pal",
+      "ntsc"
+    ]
+  },
+  "id": "save-manager",
+  "name": "Save Manager",
+  "description": "Native RAC1-style save-slot page; manual save targets only the game's active slot on API 1.11+."
+}

@@ -1,0 +1,161 @@
+name: my-mods bundle
+
+on:
+  push:
+    branches: [my-mods]
+    paths:
+      - "my/**"
+      - "openrac-mods.json"
+      - "my-sources.json"
+      - "README.md"
+      - ".github/workflows/my-mods-release.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: my-mods-bundle
+  cancel-in-progress: true
+
+jobs:
+  mirror:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Validate catalog
+        shell: python
+        run: |
+          import json, pathlib
+          root=pathlib.Path(".")
+          src=json.loads((root/"my-sources.json").read_text())
+          idx=json.loads((root/"openrac-mods.json").read_text())
+          assert src["format"]==1 and idx["format"]==1
+          expected=[f"my/{m['id']}" for m in src["mods"]]
+          assert idx["mods"]==expected
+          seen=set()
+          for m in src["mods"]:
+              assert m["id"] not in seen, f"duplicate id: {m['id']}"
+              seen.add(m["id"])
+              manifest=json.loads((root/"my"/m["id"]/"openrac-mod.json").read_text())
+              assert manifest["id"]==m["id"], (manifest["id"],m["id"])
+              assert manifest["version"]==m["version"], (m["id"],manifest["version"],m["version"])
+              assert m["repo"].startswith("momo1212221/")
+              assert m["tag"]
+              assert m["mode"] in {"native","universal-native","universal-tool"}
+              if m["mode"]!="native":
+                  assert m.get("platforms")
+
+      - name: Mirror pinned release archives
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: python
+        run: |
+          import json, pathlib, shutil, subprocess, zipfile
+          root=pathlib.Path(".")
+          dist=root/"dist"
+          if dist.exists(): shutil.rmtree(dist)
+          dist.mkdir()
+          catalog=json.loads((root/"my-sources.json").read_text())
+
+          def run(*args):
+              subprocess.run(args,check=True)
+
+          def manifest_from_zip(path):
+              with zipfile.ZipFile(path) as z:
+                  names=[n for n in z.namelist() if n=="openrac-mod.json" or (n.count("/")==1 and n.endswith("/openrac-mod.json"))]
+                  assert names, f"{path}: no openrac-mod.json"
+                  names.sort(key=len)
+                  return json.loads(z.read(names[0]))
+
+          for m in catalog["mods"]:
+              mod_id=m["id"]; version=m["version"]; repo=m["repo"]; tag=m["tag"]; mode=m["mode"]
+              tmp=root/"mirror-tmp"/mod_id
+              if tmp.exists(): shutil.rmtree(tmp)
+              tmp.mkdir(parents=True)
+
+              if mode=="native":
+                  pattern=f"{mod_id}-{version}-*.zip"
+                  run("gh","release","download",tag,"--repo",repo,"--pattern",pattern,"--dir",str(tmp))
+                  files=sorted(tmp.glob(pattern))
+                  assert files, f"{repo}@{tag}: no {pattern}"
+                  for source in files:
+                      manifest=manifest_from_zip(source)
+                      assert manifest["id"]==mod_id and manifest["version"]==version, source
+                      shutil.copy2(source,dist/source.name)
+              else:
+                  joined=f"{mod_id}-{version}.zip"
+                  run("gh","release","download",tag,"--repo",repo,"--pattern",joined,"--dir",str(tmp))
+                  source=tmp/joined
+                  assert source.is_file(), f"{repo}@{tag}: no {joined}"
+                  manifest=manifest_from_zip(source)
+                  assert manifest["id"]==mod_id and manifest["version"]==version, source
+                  shutil.copy2(source,dist/joined)
+                  for platform in m["platforms"]:
+                      shutil.copy2(source,dist/f"{mod_id}-{version}-{platform}.zip")
+
+          assert list(dist.glob("*.zip")), "no mirrored archives"
+          shutil.copy2(root/"my-sources.json",dist/"MY_SOURCES.json")
+
+      - name: Hash mirrored archives
+        shell: bash
+        run: |
+          cd dist
+          sha256sum *.zip > SHA256SUMS
+          cat SHA256SUMS
+          echo "assets: $(find . -maxdepth 1 -name '*.zip' | wc -l)"
+
+      - name: Publish personal bundle release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          VERSION="$(python3 -c 'import json; print(json.load(open("my-sources.json"))["bundle_version"])')"
+          TAG="my-mods-v$VERSION"
+          python3 - <<'PY' > notes.md
+          import json
+          c=json.load(open("my-sources.json"))
+          print("# Moritz' OpenRAC mod bundle")
+          print()
+          print("Use this repository branch in OpenRAC Launcher -> Mods -> Add from a link:")
+          print()
+          print("https://github.com/momo1212221/openrac-mods/tree/my-mods")
+          print()
+          print("Pinned mods:")
+          for m in c["mods"]:
+              note=(" — "+m["note"]) if m.get("note") else ""
+              print(f"- {m['id']} {m['version']} from {m['repo']} @ {m['tag']}{note}")
+          PY
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release delete "$TAG" --cleanup-tag --yes
+          fi
+          gh release create "$TAG" --target "$GITHUB_SHA" --title "My OpenRAC mods $VERSION" --notes-file notes.md --latest=false
+
+          mapfile -t files < <(find dist -maxdepth 1 -type f -print | sort)
+          for ((i=0; i<${#files[@]}; i+=20)); do
+            gh release upload "$TAG" --clobber "${files[@]:i:20}"
+          done
+
+      - name: Verify published release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: python
+        run: |
+          import json, subprocess
+          c=json.loads(subprocess.check_output(["gh","release","view",f"my-mods-v{json.load(open('my-sources.json'))['bundle_version']}","--json","assets,tagName"],text=True))
+          names={a["name"] for a in c["assets"]}
+          assert "SHA256SUMS" in names and "MY_SOURCES.json" in names
+          src=json.load(open("my-sources.json"))
+          for m in src["mods"]:
+              if m["mode"]=="native":
+                  assert any(n.startswith(f"{m['id']}-{m['version']}-") and n.endswith(".zip") for n in names), m["id"]
+              else:
+                  for p in m["platforms"]:
+                      assert f"{m['id']}-{m['version']}-{p}.zip" in names, (m["id"],p)
+          print(f"verified {len(names)} release assets")

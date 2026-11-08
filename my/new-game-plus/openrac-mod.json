@@ -1,0 +1,36 @@
+{
+  "format": 2,
+  "version": "0.1.0",
+  "author": "mo",
+  "license": "GPL-3.0-or-later",
+  "api": "1.9",
+  "games": {
+    "rac1": [
+      "pal",
+      "ntsc"
+    ]
+  },
+  "id": "new-game-plus",
+  "name": "New Game Plus Improvements",
+  "description": "Adds configurable quality-of-life behavior when Challenge Mode/New Game Plus starts, including an optional bolt bonus and first-scene skip.",
+  "hooks": [
+    "rac1.save.new_game_plus"
+  ],
+  "settings": [
+    {
+      "key": "bonus_bolts",
+      "name": "NG+ starting bolt bonus",
+      "type": "int",
+      "default": 0,
+      "min": 0,
+      "max": 100000,
+      "step": 5000
+    },
+    {
+      "key": "skip_first_scene",
+      "name": "Skip first in-level scene after NG+ starts",
+      "type": "bool",
+      "default": true
+    }
+  ]
+}

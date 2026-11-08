@@ -1,0 +1,20 @@
+{
+  "format": 2,
+  "id": "weapon-wheel-pause",
+  "name": "Weapon Wheel Pause",
+  "version": "0.1.0",
+  "author": "Moritz Wallinger",
+  "description": "Pauses Ratchet and, when available, world moby updates while the in-game weapon wheel is open.",
+  "license": "MIT",
+  "api": "1.12",
+  "games": {
+    "rac1": [
+      "pal",
+      "ntsc"
+    ]
+  },
+  "hooks": [
+    "rac1.player.update",
+    "rac1.hud.quick_select.update"
+  ]
+}
