@@ -1,0 +1,132 @@
+name: arsenal-mastery release
+
+on:
+  push:
+    branches: [arsenal-mastery-port]
+    paths:
+      - "arsenal-mastery/**"
+      - "CMakeLists.txt"
+      - "sdk.lock"
+      - "tools/fetch_sdk.py"
+      - ".github/workflows/arsenal-mastery-release.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: arsenal-mastery-release
+  cancel-in-progress: true
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-x86_64
+            os: windows-2025
+          - name: linux-x86_64
+            os: ubuntu-22.04
+          - name: linux-aarch64
+            os: ubuntu-24.04-arm
+          - name: macos-arm64
+            os: macos-15
+            configure: -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
+          - name: macos-x86_64
+            os: macos-15
+            configure: -DCMAKE_OSX_ARCHITECTURES=x86_64 -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
+            skip_tests: true
+          - name: android-arm64
+            os: ubuntu-24.04
+            configure: >-
+              -DCMAKE_TOOLCHAIN_FILE=${ANDROID_NDK_LATEST_HOME}/build/cmake/android.toolchain.cmake
+              -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-28
+            skip_tests: true
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Ninja
+        run: python -m pip install ninja
+      - name: Set up MSVC
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
+          cmd /c "`"$vs\VC\Auxiliary\Build\vcvars64.bat`" && set" | ForEach-Object {
+            if ($_ -match '^([^=]+)=(.*)$') { "$($matches[1])=$($matches[2])" | Out-File -Append $env:GITHUB_ENV }
+          }
+      - name: Fetch pinned OpenRAC SDK
+        run: echo "SDK=$(python tools/fetch_sdk.py)" >> "$GITHUB_ENV"
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release ${{ matrix.configure }}
+      - name: Build Arsenal Mastery
+        run: cmake --build build --target arsenal_mastery --parallel
+      - name: Test
+        if: ${{ !matrix.skip_tests }}
+        run: ctest --test-dir build --output-on-failure --no-tests=ignore
+      - name: Package
+        run: |
+          mkdir -p dist
+          python "$SDK/tools/package_mod.py" build/package/arsenal_mastery -o dist
+          test -f "dist/arsenal-mastery-0.1.0-${{ matrix.name }}.zip"
+          ls -lh dist
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: arsenal-${{ matrix.name }}
+          path: dist/arsenal-mastery-0.1.0-*.zip
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Fetch pinned OpenRAC SDK
+        run: echo "SDK=$(python tools/fetch_sdk.py)" >> "$GITHUB_ENV"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: arsenal-*
+          path: dist
+          merge-multiple: true
+      - name: Merge platforms and hash
+        run: |
+          python "$SDK/tools/package_mod.py" --merge dist/arsenal-mastery-0.1.0-*.zip -o dist/arsenal-mastery-0.1.0.zip
+          (cd dist && sha256sum arsenal-mastery-0.1.0*.zip > SHA256SUMS)
+          cat dist/SHA256SUMS
+      - name: Publish private-port release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          TAG="arsenal-mastery-v0.1.0"
+          cat > notes.md <<'EOF'
+Arsenal Mastery 0.1.0 — OpenRAC port.
+
+This is the private/personal OpenRAC port used by Moritz' own mod list. It is not submitted to the official OpenRAC mod index.
+
+Implemented: damage-based weapon XP, V1-V5 progression, level-based weapon power, weapon attribution, planet enemy rebalance, hard rebalance, New Game reset and New Game+ session progression.
+
+Original Arsenal Mastery design and RAC-RS implementation: AsobiCodes, MIT.
+EOF
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release delete "$TAG" --cleanup-tag --yes
+          fi
+          gh release create "$TAG" --target "$GITHUB_SHA" --title "Arsenal Mastery OpenRAC port 0.1.0" --notes-file notes.md dist/arsenal-mastery-0.1.0*.zip dist/SHA256SUMS
