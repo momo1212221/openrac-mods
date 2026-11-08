@@ -1,0 +1,26 @@
+{
+  "format": 1,
+  "mods": [
+    "my/modern-controls",
+    "my/steam-deck-pack",
+    "my/better-hud",
+    "my/better-pause-menu",
+    "my/checkpoint-plus",
+    "my/collectible-tracker",
+    "my/cutscene-manager",
+    "my/death-improvements",
+    "my/fast-travel",
+    "my/improved-vendor",
+    "my/mission-tracker",
+    "my/new-game-plus",
+    "my/save-manager",
+    "my/weapon-wheel-pause",
+    "my/multiplayer",
+    "my/graphics-preparation",
+    "my/graphics-effects-runtime",
+    "my/save-backup-sync",
+    "my/enhanced-weapons",
+    "my/enhanced-audio",
+    "my/accessibility-pack"
+  ]
+}

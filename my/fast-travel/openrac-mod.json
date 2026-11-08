@@ -1,0 +1,16 @@
+{
+  "format": 2,
+  "version": "0.3.0",
+  "author": "mo",
+  "license": "GPL-3.0-or-later",
+  "api": "1.9",
+  "games": {
+    "rac1": [
+      "pal",
+      "ntsc"
+    ]
+  },
+  "id": "fast-travel",
+  "name": "Fast Travel",
+  "description": "Native RAC1 fast travel to all unlocked planets, including directly from the pause menu."
+}

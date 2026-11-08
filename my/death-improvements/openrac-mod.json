@@ -1,0 +1,39 @@
+{
+  "format": 2,
+  "version": "0.1.0",
+  "author": "mo",
+  "license": "GPL-3.0-or-later",
+  "api": "1.9",
+  "games": {
+    "rac1": [
+      "pal",
+      "ntsc"
+    ]
+  },
+  "id": "death-improvements",
+  "name": "Death Improvements",
+  "description": "Session death counter, optional post-death scene skipping, and a controller shortcut to restart the current planet.",
+  "settings": [
+    {
+      "key": "show_counter",
+      "name": "Show death counter",
+      "type": "bool",
+      "default": true
+    },
+    {
+      "key": "skip_death_scenes",
+      "name": "Skip scenes while dead",
+      "type": "bool",
+      "default": true
+    },
+    {
+      "key": "skip_after_frames",
+      "name": "Scene frames before skip",
+      "type": "int",
+      "default": 45,
+      "min": 0,
+      "max": 600,
+      "step": 15
+    }
+  ]
+}

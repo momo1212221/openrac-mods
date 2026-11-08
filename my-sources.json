@@ -1,0 +1,191 @@
+{
+  "format": 1,
+  "bundle_version": "1.0.0",
+  "mods": [
+    {
+      "id": "modern-controls",
+      "version": "0.3.3",
+      "repo": "momo1212221/modern-controls",
+      "tag": "v0.3.3",
+      "mode": "native"
+    },
+    {
+      "id": "steam-deck-pack",
+      "version": "0.3.0",
+      "repo": "momo1212221/steam-deck-pack",
+      "tag": "v0.3.0",
+      "mode": "native"
+    },
+    {
+      "id": "better-hud",
+      "version": "0.1.0",
+      "repo": "momo1212221/better-hud",
+      "tag": "v0.1.0",
+      "mode": "native",
+      "note": "The repository has newer unreleased source; the catalog deliberately uses the last published build."
+    },
+    {
+      "id": "better-pause-menu",
+      "version": "0.8.7",
+      "repo": "momo1212221/better-pause-menu",
+      "tag": "v0.8.7",
+      "mode": "native"
+    },
+    {
+      "id": "checkpoint-plus",
+      "version": "0.1.0",
+      "repo": "momo1212221/checkpoint-plus",
+      "tag": "v0.1.0",
+      "mode": "native",
+      "note": "The repository has newer unreleased source; the catalog deliberately uses the last published build."
+    },
+    {
+      "id": "collectible-tracker",
+      "version": "0.1.0",
+      "repo": "momo1212221/collectible-tracker",
+      "tag": "v0.1.0",
+      "mode": "native"
+    },
+    {
+      "id": "cutscene-manager",
+      "version": "0.2.0",
+      "repo": "momo1212221/cutscene-manager",
+      "tag": "v0.2.0",
+      "mode": "native"
+    },
+    {
+      "id": "death-improvements",
+      "version": "0.1.0",
+      "repo": "momo1212221/death-improvements",
+      "tag": "v0.1.0",
+      "mode": "native"
+    },
+    {
+      "id": "fast-travel",
+      "version": "0.3.0",
+      "repo": "momo1212221/fast-travel",
+      "tag": "v0.3.0",
+      "mode": "native"
+    },
+    {
+      "id": "improved-vendor",
+      "version": "0.1.0",
+      "repo": "momo1212221/improved-vendor",
+      "tag": "v0.1.0",
+      "mode": "native"
+    },
+    {
+      "id": "mission-tracker",
+      "version": "0.1.0",
+      "repo": "momo1212221/mission-tracker",
+      "tag": "v0.1.0",
+      "mode": "native"
+    },
+    {
+      "id": "new-game-plus",
+      "version": "0.1.0",
+      "repo": "momo1212221/new-game-plus",
+      "tag": "v0.1.0",
+      "mode": "native"
+    },
+    {
+      "id": "save-manager",
+      "version": "0.2.0",
+      "repo": "momo1212221/save-manager",
+      "tag": "v0.2.0",
+      "mode": "native"
+    },
+    {
+      "id": "weapon-wheel-pause",
+      "version": "0.1.0",
+      "repo": "momo1212221/weapon-wheel-pause",
+      "tag": "v0.1.0",
+      "mode": "native",
+      "note": "The published build currently provides macOS ARM64 only."
+    },
+    {
+      "id": "multiplayer",
+      "version": "0.7.8",
+      "repo": "momo1212221/openrac-multiplayer-hit-fix",
+      "tag": "multiplayer-v0.7.8",
+      "mode": "native"
+    },
+    {
+      "id": "graphics-preparation",
+      "version": "0.17.0",
+      "repo": "momo1212221/openrac-graphics-preparation",
+      "tag": "v0.17.0",
+      "mode": "universal-native",
+      "platforms": [
+        "linux-x86_64",
+        "linux-aarch64",
+        "macos-arm64",
+        "macos-x86_64",
+        "windows-x86_64"
+      ]
+    },
+    {
+      "id": "graphics-effects-runtime",
+      "version": "0.1.2",
+      "repo": "momo1212221/openrac-graphics-preparation",
+      "tag": "effects-runtime-v0.1.2",
+      "mode": "universal-native",
+      "platforms": [
+        "linux-x86_64",
+        "linux-aarch64",
+        "macos-arm64",
+        "macos-x86_64",
+        "windows-x86_64"
+      ],
+      "note": "Standalone legacy runtime; Graphics preparation 0.17.0 already integrates the runtime."
+    },
+    {
+      "id": "save-backup-sync",
+      "version": "0.1.0",
+      "repo": "momo1212221/openrac-backup-cloud-saves",
+      "tag": "v0.1.0",
+      "mode": "universal-tool",
+      "platforms": [
+        "linux-x86_64",
+        "linux-aarch64",
+        "macos-arm64",
+        "macos-x86_64",
+        "windows-x86_64"
+      ],
+      "note": "Beta/prerelease source mirrored for the personal catalog."
+    },
+    {
+      "id": "enhanced-weapons",
+      "version": "0.3.0",
+      "repo": "momo1212221/OpenRAC",
+      "tag": "openrac-enhancements-v0.3.0",
+      "mode": "native"
+    },
+    {
+      "id": "enhanced-audio",
+      "version": "0.2.0",
+      "repo": "momo1212221/OpenRAC",
+      "tag": "openrac-enhancements-v0.3.0",
+      "mode": "native"
+    },
+    {
+      "id": "accessibility-pack",
+      "version": "0.2.0",
+      "repo": "momo1212221/OpenRAC",
+      "tag": "openrac-enhancements-v0.3.0",
+      "mode": "native",
+      "note": "Current Enhanced RAC accessibility build. The older hold-to-mash repo uses the same id and is kept as legacy only."
+    }
+  ],
+  "legacy": [
+    {
+      "repo": "momo1212221/accessibility-pack",
+      "tag": "v0.2.0",
+      "reason": "Same mod id as the newer Enhanced Accessibility build."
+    },
+    {
+      "repo": "momo1212221/openrac-enhanced-vanilla",
+      "reason": "No published OpenRAC mod release yet."
+    }
+  ]
+}

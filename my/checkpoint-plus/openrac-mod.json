@@ -1,0 +1,24 @@
+{
+  "format": 2,
+  "version": "0.1.0",
+  "author": "mo",
+  "license": "GPL-3.0-or-later",
+  "api": "1.9",
+  "games": {
+    "rac1": [
+      "pal",
+      "ntsc"
+    ]
+  },
+  "id": "checkpoint-plus",
+  "name": "Checkpoint Plus",
+  "description": "Warm quick-checkpoints with an automatic level-start checkpoint and controller shortcuts to save or restore safely within the current level load.",
+  "settings": [
+    {
+      "key": "auto_level_start",
+      "name": "Automatic checkpoint after level start",
+      "type": "bool",
+      "default": true
+    }
+  ]
+}

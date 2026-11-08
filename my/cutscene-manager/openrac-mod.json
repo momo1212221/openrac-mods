@@ -1,0 +1,36 @@
+{
+  "format": 2,
+  "version": "0.2.0",
+  "author": "mo",
+  "license": "GPL-3.0-or-later",
+  "api": "1.9",
+  "games": {
+    "rac1": [
+      "pal",
+      "ntsc"
+    ]
+  },
+  "id": "cutscene-manager",
+  "name": "Cutscene Manager",
+  "description": "Skips only repeated in-level scenes proven safe after a natural completion; level-ending/progression scenes are never auto-skipped.",
+  "settings": [
+    {
+      "key": "mode",
+      "name": "Skip mode: 0 off, 1 safe repeats only",
+      "type": "int",
+      "default": 0,
+      "min": 0,
+      "max": 1,
+      "step": 1
+    },
+    {
+      "key": "min_frames",
+      "name": "Minimum scene frames before skip",
+      "type": "int",
+      "default": 45,
+      "min": 0,
+      "max": 600,
+      "step": 15
+    }
+  ]
+}

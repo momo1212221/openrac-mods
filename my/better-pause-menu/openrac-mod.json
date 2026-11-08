@@ -1,0 +1,21 @@
+{
+  "format": 2,
+  "version": "0.8.7",
+  "author": "mo",
+  "license": "GPL-3.0-or-later",
+  "api": "1.9",
+  "games": {
+    "rac1": [
+      "pal",
+      "ntsc"
+    ]
+  },
+  "id": "better-pause-menu",
+  "name": "QoL Hub",
+  "description": "Native RAC1 Options-integrated QoL Hub with always-visible live Status and Collectibles information in the original side information panel; the game preview image remains untouched.",
+  "hooks": [
+    "rac1.gold_bolt.count_collected",
+    "rac1.planet.unlock",
+    "rac1.item.give"
+  ]
+}

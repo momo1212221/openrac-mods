@@ -1,0 +1,48 @@
+{
+  "format": 2,
+  "version": "0.1.0",
+  "author": "mo",
+  "license": "GPL-3.0-or-later",
+  "api": "1.9",
+  "games": {
+    "rac1": [
+      "pal",
+      "ntsc"
+    ]
+  },
+  "id": "better-hud",
+  "name": "Better HUD",
+  "description": "Event-driven HUD notices for damage, bolt pickups, item acquisition and newly unlocked planets without permanently occupying the screen.",
+  "hooks": [
+    "rac1.player.take_damage",
+    "rac1.moby.collect_bolt",
+    "rac1.item.give",
+    "rac1.planet.unlock"
+  ],
+  "settings": [
+    {
+      "key": "damage",
+      "name": "Damage notices",
+      "type": "bool",
+      "default": true
+    },
+    {
+      "key": "bolts",
+      "name": "Bolt notices",
+      "type": "bool",
+      "default": true
+    },
+    {
+      "key": "items",
+      "name": "Item notices",
+      "type": "bool",
+      "default": true
+    },
+    {
+      "key": "planets",
+      "name": "Planet unlock notices",
+      "type": "bool",
+      "default": true
+    }
+  ]
+}
