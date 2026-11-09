@@ -358,3 +358,184 @@ int weapon_from_attacker(std::uint32_t attacker) {
     // Class 121 is normally a Bomb Glove bomb, but Visibomb's split projectiles reuse it and keep
     // their Visibomb projectile as owner. Mirror RAC-RS's owner check before the static class map.
     if (cls == 121) {
+        const std::uint32_t pvar = get<std::uint32_t>(attacker + kMobyPvar);
+        if (pvar != 0) {
+            const std::uint32_t owner = get<std::uint32_t>(pvar + kBombOwner);
+            if (owner != 0 && get<std::int16_t>(owner + kMobyClass) == 163) {
+                return arsenal::weapon_from_key("visibomb");
+            }
+        }
+    }
+
+    return weapon_from_class(cls, kAttackers);
+}
+
+bool is_enemy(std::uint32_t moby) {
+    if (moby == 0 || moby == get<std::uint32_t>(hero() + kHeroMoby)) return false;
+    const std::int16_t cls = get<std::int16_t>(moby + kMobyClass);
+    if (std::find(kEnemyClasses.begin(), kEnemyClasses.end(), cls) != kEnemyClasses.end()) return true;
+
+    // RAC1's class record labels type 5 as enemy, 9 as crate and 11 as another targetable object.
+    // This catches enemy classes added to the decomp/port after the original Arsenal Mastery table
+    // without giving XP for crates or NPC targets.
+    const std::uint32_t class_ptr = get<std::uint32_t>(moby + kMobyClassPtr);
+    return class_ptr != 0 && get<std::int16_t>(class_ptr + kClassType) == 5;
+}
+
+double rebalance_factor() {
+    if (sRebalanceMode == "off") return 1.0;
+    const int level = sMod->loaded_level();
+    double factor = 1.0;
+    if (level >= 0 && level < static_cast<int>(kRebalance.size())) {
+        factor = kRebalance[static_cast<std::size_t>(level)];
+    }
+    if (sRebalanceMode == "hard") factor *= kHardFactor;
+    if (sProgression.new_game_plus()) factor *= kNgPlusFactor;
+    return factor;
+}
+
+bool actual_gold_weapon(int weapon) {
+    if (weapon < 0 || weapon >= static_cast<int>(weapons().size())) return false;
+    const int item = weapons()[static_cast<std::size_t>(weapon)].item_id;
+    return get<std::uint8_t>(exe(sDisc->gold_flags) + static_cast<std::uint32_t>(item)) != 0;
+}
+
+double weapon_power(int weapon) {
+    double power = sProgression.power(weapon);
+    const auto& def = weapons()[static_cast<std::size_t>(weapon)];
+    // Retail Pyrocitor/Tesla gold versions multiply their own hit before Arsenal Mastery sees it.
+    // Divide that part out only when the player actually owns the retail gold version; the earlier
+    // port never grants that flag for free, so it cannot accidentally spend the player's gold bolts.
+    if (sProgression.settings().gold_at_v5 && sProgression.level(weapon) >= 5
+        && actual_gold_weapon(weapon) && def.retail_gold_power > 1.0) {
+        power /= def.retail_gold_power;
+    }
+    return power;
+}
+
+bool repeated_hit(std::uint32_t hit, std::uint32_t victim, std::uint32_t attacker, float current_damage) {
+    const gaddr ring = level0(sDisc->hit_ring);
+    if (hit < ring || (hit - ring) % kHitSize != 0) return false;
+    const std::uint32_t index = (hit - ring) / kHitSize;
+    if (index >= kHitCount) return false;
+    const SeenHit& seen = sSeen[index];
+    if (seen.victim != victim || seen.attacker != attacker
+        || std::fabs(seen.scaled_damage - current_damage) >= 0.0001f) {
+        return false;
+    }
+
+    // When the mod changed the damage, the modified value itself identifies a repeat until this
+    // ring slot is overwritten. If retail damage and scaled damage are identical, keep a short
+    // tick guard so a later independent equal-strength hit in the same ring slot is not suppressed.
+    if (std::fabs(seen.raw_damage - seen.scaled_damage) >= 0.0001f) return true;
+    return sTick <= seen.tick + 2;
+}
+
+void remember_hit(
+    std::uint32_t hit,
+    std::uint32_t victim,
+    std::uint32_t attacker,
+    float raw_damage,
+    float scaled_damage
+) {
+    const gaddr ring = level0(sDisc->hit_ring);
+    if (hit < ring || (hit - ring) % kHitSize != 0) return;
+    const std::uint32_t index = (hit - ring) / kHitSize;
+    if (index < kHitCount) sSeen[index] = {victim, attacker, raw_damage, scaled_damage, sTick};
+}
+
+std::optional<double> enemy_health(std::uint32_t victim) {
+    const std::uint32_t pvar = get<std::uint32_t>(victim + kMobyPvar);
+    if (pvar == 0) return std::nullopt;
+    const float health = get<float>(pvar + kEnemyHealth);
+    if (!std::isfinite(health) || health < 0.0f) return std::nullopt;
+    return static_cast<double>(health);
+}
+
+double starting_health_for(std::uint32_t victim, double current_health) {
+    const std::int16_t cls = get<std::int16_t>(victim + kMobyClass);
+    auto& v = sVictims[victim];
+    const bool reset = v.moby_class != cls || !(v.starting_health > 0.0)
+                       || current_health > v.predicted_health + 0.001;
+    if (reset) {
+        v.moby_class = cls;
+        v.starting_health = current_health;
+    }
+    v.predicted_health = current_health;
+    v.tick = sTick;
+    return v.starting_health;
+}
+
+void note_predicted_health(std::uint32_t victim, double remaining) {
+    auto it = sVictims.find(victim);
+    if (it == sVictims.end()) return;
+    it->second.predicted_health = std::max(0.0, remaining);
+    it->second.tick = sTick;
+}
+
+int current_ammo_cap(int weapon) {
+    if (weapon < 0 || weapon >= static_cast<int>(weapons().size())) return 0;
+    const auto& def = weapons()[static_cast<std::size_t>(weapon)];
+    if (!def.has_ammo) return 0;
+    const int retail = sRetailAmmoCap[static_cast<std::size_t>(weapon)];
+    if (retail <= 0) return 0;
+    const int level = sProgression.settings().level_power ? sProgression.level(weapon) : 1;
+    return std::max(1, static_cast<int>(std::lround(retail * arsenal::ammo_capacity_factor(level))));
+}
+
+void snapshot_retail_ammo_caps() {
+    sRetailAmmoCap.fill(-1);
+    sAppliedAmmoLevel.fill(-1);
+    if (sMod->loaded_level() < 0) return;
+    const gaddr table = level0(sDisc->item_table);
+    for (std::size_t i = 0; i < weapons().size(); ++i) {
+        if (!weapons()[i].has_ammo) continue;
+        const auto item = static_cast<std::uint32_t>(weapons()[i].item_id);
+        sRetailAmmoCap[i] = static_cast<int>(get<std::uint16_t>(table + item * kItemSize + kItemMaxAmmo));
+    }
+}
+
+void apply_ammo_capacity(int weapon, bool force = false) {
+    if (weapon < 0 || weapon >= static_cast<int>(weapons().size()) || sMod->loaded_level() < 0) return;
+    const auto& def = weapons()[static_cast<std::size_t>(weapon)];
+    if (!def.has_ammo || sRetailAmmoCap[static_cast<std::size_t>(weapon)] <= 0) return;
+
+    const int level = sProgression.settings().level_power ? sProgression.level(weapon) : 1;
+    if (!force && sAppliedAmmoLevel[static_cast<std::size_t>(weapon)] == level) return;
+    const int cap = current_ammo_cap(weapon);
+    if (cap <= 0) return;
+
+    const auto item = static_cast<std::uint32_t>(def.item_id);
+    const gaddr row = level0(sDisc->item_table) + item * kItemSize;
+    put<std::uint16_t>(row + kItemMaxAmmo, static_cast<std::uint16_t>(std::min(cap, 65535)));
+
+    const gaddr ammo = exe(sDisc->ammo) + item * sizeof(std::int32_t);
+    const int current = get<std::int32_t>(ammo);
+    if (current > cap) put<std::int32_t>(ammo, cap);
+    sAppliedAmmoLevel[static_cast<std::size_t>(weapon)] = level;
+}
+
+void apply_all_ammo_caps(bool force = false) {
+    for (int i = 0; i < static_cast<int>(weapons().size()); ++i) apply_ammo_capacity(i, force);
+}
+
+void refund_survival_ammo(int weapon) {
+    if (sAmmoMode != "survival" || weapon < 0 || weapon >= static_cast<int>(weapons().size())) return;
+    const auto& def = weapons()[static_cast<std::size_t>(weapon)];
+    if (!def.has_ammo || std::string(def.key) == "glove_of_doom") return;
+    const int cap = current_ammo_cap(weapon);
+    if (cap <= 0) return;
+    const gaddr at = exe(sDisc->ammo) + static_cast<std::uint32_t>(def.item_id) * sizeof(std::int32_t);
+    const int before = get<std::int32_t>(at);
+    if (before < cap) put<std::int32_t>(at, std::min(cap, before + 1));
+}
+
+int nanotech_orbs_for(double points, double max_points, int retail_max_orbs) {
+    if (points >= max_points) return retail_max_orbs;
+    if (points <= 0.0) return 0;
+    return std::clamp(
+        static_cast<int>(std::ceil(points / std::max(1.0, max_points) * (retail_max_orbs - 1))),
+        1,
+        std::max(1, retail_max_orbs - 1)
+    );
+}
