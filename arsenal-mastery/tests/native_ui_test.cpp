@@ -46,7 +46,7 @@ int main() {
     assert(kHudElementCount == 13);
     assert(kHudElementStride == 0x90);
     assert(kHudAmmoFadeOffset == 0x70);
-    assert(kHudAmmoPointerOffset == 0x80);
+    assert(kHudAmmoPointerOffset == 0x0C);
     assert(hud_alpha(-1) == 0);
     assert(hud_alpha(0) == 0);
     assert(hud_alpha(4) == 127);
