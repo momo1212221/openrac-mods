@@ -1,0 +1,86 @@
+# One-off recovery of the already-tested 0.4.8 release from the complete
+# build.yml artifact of the exact same commit. The tag workflow lost its
+# macOS ARM64 runner; the default-branch workflow built both architectures.
+# Do not bypass platform completeness or provenance checks.
+name: recover-arsenal-048
+
+on:
+  push:
+    branches: [master]
+    paths: [.github/workflows/recover-arsenal-048.yml]
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: recover-arsenal-048
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Recover the verified 0.4.8 native archives
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: arsenal-mastery-v0.4.8
+          BUILD_RUN: "42663426351"
+          SOURCE_SHA: "3191a625e1aff5e3195d7e28c27b9538ad24fc7f"
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Only a complete and successful build of the version's tag commit
+          # may be used. Never publish random or unverified CI artifacts.
+          actual_tag_sha="$(gh api "repos/$GH_REPO/git/ref/tags/$TAG" --jq '.object.sha')"
+          actual_build_sha="$(gh api "repos/$GH_REPO/actions/runs/$BUILD_RUN" --jq '.head_sha')"
+          build_result="$(gh api "repos/$GH_REPO/actions/runs/$BUILD_RUN" --jq '.conclusion')"
+          build_branch="$(gh api "repos/$GH_REPO/actions/runs/$BUILD_RUN" --jq '.head_branch')"
+          if [[ "$actual_tag_sha" != "$SOURCE_SHA" || "$actual_build_sha" != "$SOURCE_SHA" ||
+                "$build_result" != success || "$build_branch" != master ]]; then
+            echo "::error::Tag and complete master build must match the pinned source SHA"
+            exit 1
+          fi
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "::error::Release $TAG already exists; no overwrite or partial upload permitted."
+            exit 1
+          fi
+
+          mkdir -p dist release
+          gh run download "$BUILD_RUN" --repo "$GH_REPO" --name mods --dir dist
+
+          # Require each native target, including BOTH macOS architectures.
+          for platform in windows-x86_64 linux-x86_64 linux-aarch64 macos-arm64 macos-x86_64 android-arm64; do
+            filename="arsenal-mastery-0.4.8-$platform.zip"
+            test -s "dist/$filename" || {
+              echo "::error::Missing $filename in verified build artifact"
+              exit 1
+            }
+            unzip -tqq "dist/$filename"
+            cp "dist/$filename" release/
+          done
+          test -s dist/arsenal-mastery-0.4.8.zip
+          unzip -tqq dist/arsenal-mastery-0.4.8.zip
+          cp dist/arsenal-mastery-0.4.8.zip release/
+          (cd release && sha256sum -- *.zip > SHA256SUMS)
+          test "$(find release -maxdepth 1 -type f -name '*.zip' | wc -l)" -eq 7
+
+          cat > release-notes.md <<'NOTES'
+          Arsenal Mastery 0.4.8 for OpenRAC (PAL / NTSC-U).
+
+          - Compact weapon XP HUD attached to the existing ammunition HUD, with V-level indicator and short upgrade effect.
+          - Native progress labels in the original Weapons menu; removes the detached XP panel.
+          - Keeps the existing per-save progression and 0.4.7 unsaved-game fixes.
+
+          Built from commit 3191a625e1aff5e3195d7e28c27b9538ad24fc7f. Recovery uses the complete, successful master build 42663426351, including native macOS ARM64 and Intel builds, after the separate tag workflow could not acquire an ARM64 runner.
+
+          Install by pasting https://github.com/momo1212221/openrac-mods in OpenRAC Launcher's Mods > Add a mod, or use the appropriate platform zip below.
+          NOTES
+
+          gh release create "$TAG" release/* --title "Arsenal Mastery 0.4.8" --notes-file release-notes.md --verify-tag
+          echo "Published complete $TAG for all six native platforms."
