@@ -539,3 +539,183 @@ int nanotech_orbs_for(double points, double max_points, int retail_max_orbs) {
         std::max(1, retail_max_orbs - 1)
     );
 }
+}
+
+void sync_nanotech() {
+    if (!sNanotechEnabled || sMod->loaded_level() < 0) {
+        sNanoPool = -1.0;
+        sNanoLastOrbs = -1;
+        return;
+    }
+
+    const int max_orbs = std::clamp(get<std::int32_t>(exe(sDisc->max_health)), 1, 16);
+    const int health = std::clamp(get<std::int32_t>(exe(sDisc->hero_health)), 0, max_orbs);
+    const double wanted_max = static_cast<double>(sNanotech.max_points(sProgression.new_game_plus(), max_orbs));
+
+    if (sNanoPool < 0.0 || sNanoLastOrbs < 0) {
+        sNanoMax = wanted_max;
+        sNanoPool = health >= max_orbs ? sNanoMax : sNanoMax * health / max_orbs;
+        sNanoLastOrbs = health;
+        sLastNanoLevel = sNanotech.level(sProgression.new_game_plus());
+        return;
+    }
+
+    if (std::fabs(wanted_max - sNanoMax) > 0.0001) {
+        if (wanted_max > sNanoMax) sNanoPool = std::min(wanted_max, sNanoPool + wanted_max - sNanoMax);
+        else sNanoPool = std::min(sNanoPool, wanted_max);
+        sNanoMax = wanted_max;
+    }
+
+    if (health > sNanoLastOrbs) {
+        if (health >= max_orbs && sNanoLastOrbs == 0) sNanoPool = sNanoMax;
+        else sNanoPool = std::min(sNanoMax, sNanoPool + (health - sNanoLastOrbs) * sNanoMax / max_orbs);
+    } else if (health < sNanoLastOrbs) {
+        sNanoPool = health <= 0 ? 0.0 : std::min(sNanoPool, sNanoMax * health / max_orbs);
+    }
+    sNanoLastOrbs = health;
+
+    const int level = sNanotech.level(sProgression.new_game_plus());
+    if (level > sLastNanoLevel) {
+        sLastNanoLevel = level;
+        sMod->info("Nanotech reached N" + std::to_string(level) + " (" + std::to_string(static_cast<int>(sNanoMax)) + " points)");
+    }
+}
+
+double nanotech_damage_per_hit() {
+    const int level = sMod->loaded_level();
+    double damage = level >= 0 && level < static_cast<int>(kNanotechDamage.size())
+                        ? kNanotechDamage[static_cast<std::size_t>(level)]
+                        : kNanotechDamage.back();
+    if (sProgression.new_game_plus()) damage *= 2.0;
+    if (sRebalanceMode == "hard") damage *= 1.3;
+    damage *= sEnemyDamage;
+    return damage;
+}
+
+void show_level_notice(int weapon, int before, int after) {
+    if (after <= before) return;
+    const std::string text = std::string(weapons()[static_cast<std::size_t>(weapon)].display_name)
+                             + " reached V" + std::to_string(after);
+    sMod->info(text);
+    if (sMod->has_notice()) sMod->play_notice(text);
+}
+
+void award_resolved_score(
+    std::uint32_t victim,
+    const PendingScore& pending,
+    double health_after,
+    bool killed_by_hit
+) {
+    const arsenal::HitScore score = arsenal::score_resolved_hit(
+        pending.health_before,
+        health_after,
+        pending.starting_health,
+        pending.effective_damage,
+        killed_by_hit
+    );
+
+    if (killed_by_hit) sVictims.erase(victim);
+    else note_predicted_health(victim, std::max(0.0, health_after));
+
+    if (pending.weapon < 0) {
+        if (sTrace && (score.removed > 0.0 || std::fabs(pending.scaled_damage - pending.raw_damage) > 0.0001f)) {
+            sMod->info(
+                "unattributed enemy hit rebalanced: " + std::to_string(pending.raw_damage)
+                + "->" + std::to_string(pending.scaled_damage)
+                + " removed=" + std::to_string(score.removed)
+            );
+        }
+        return;
+    }
+
+    if (!(score.removed > 0.0) && !score.killed) return;
+
+    const int weapon = pending.weapon;
+    const int before = sProgression.level(weapon);
+    const int after = sProgression.add_xp(weapon, score.xp);
+    if (sNanotechEnabled) sNanotech.add_xp(score.removed, sNanotechXpRate);
+    if (score.killed) {
+        sProgression.add_kill(weapon);
+        refund_survival_ammo(weapon);
+    }
+    mark_dirty();
+    show_level_notice(weapon, before, after);
+    if (after != before) apply_ammo_capacity(weapon, true);
+
+    if (sTrace) {
+        const auto& state = sProgression.state(weapon);
+        sMod->info(
+            std::string("resolved hit ") + weapons()[static_cast<std::size_t>(weapon)].key
+            + " dmg=" + std::to_string(pending.raw_damage) + "->" + std::to_string(pending.scaled_damage)
+            + " removed=" + std::to_string(score.removed)
+            + (score.killed ? " KILL" : "")
+            + " xp+=" + std::to_string(score.xp * sProgression.settings().xp_rate)
+            + " total=" + std::to_string(static_cast<int>(std::lround(state.xp)))
+            + " V" + std::to_string(after) + " T=" + std::to_string(pending.balance)
+        );
+    }
+}
+
+void finalize_pending(std::uint32_t victim, bool death) {
+    const auto found = sPendingScores.find(victim);
+    if (found == sPendingScores.end()) return;
+    const PendingScore pending = found->second;
+    sPendingScores.erase(found);
+
+    double after = std::max(0.0, pending.health_before - pending.effective_damage);
+    if (death) {
+        after = 0.0;
+    } else if (const std::optional<double> health = enemy_health(victim)) {
+        after = *health;
+    }
+
+    // Death is credited only when the game's death record happens in the same game tick as this
+    // pending hit. An older weapon hit followed by a later hazard therefore cannot steal the kill.
+    const bool killed_by_hit = death && pending.tick == sTick;
+    award_resolved_score(victim, pending, after, killed_by_hit);
+}
+
+void finalize_all_pending() {
+    if (sPendingScores.empty()) return;
+    std::vector<std::uint32_t> victims;
+    victims.reserve(sPendingScores.size());
+    for (const auto& entry : sPendingScores) victims.push_back(entry.first);
+    for (const std::uint32_t victim : victims) finalize_pending(victim, false);
+}
+
+template <class Original>
+std::uint32_t on_get_hit(Original original, std::uint32_t victim, std::int32_t mask, std::int32_t keep) {
+    const std::uint32_t hit = original(victim, mask, keep);
+    if (hit == 0 || !is_enemy(victim)) return hit;
+
+    const std::uint32_t attacker = get<std::uint32_t>(hit + kHitAttacker);
+    const int weapon = weapon_from_attacker(attacker);
+
+    const float raw_damage = get<float>(hit + kHitDamage);
+    if (!(raw_damage > 0.0f) || repeated_hit(hit, victim, attacker, raw_damage)) return hit;
+
+    // A new distinct hit to this victim means any earlier pending one has already had a chance to
+    // affect its health. Finalize that delta before establishing the new pre-hit health.
+    finalize_pending(victim, false);
+
+    const double balance = rebalance_factor();
+    const double player_power = weapon >= 0 ? weapon_power(weapon) * sWeaponDamage : 1.0;
+    const float scaled = static_cast<float>(raw_damage * player_power / std::max(0.01, balance));
+    if (std::fabs(scaled - raw_damage) > 0.0001f) put<float>(hit + kHitDamage, scaled);
+    remember_hit(hit, victim, attacker, raw_damage, scaled);
+
+    const std::optional<double> health = enemy_health(victim);
+    if (!health || !(*health > 0.0)) {
+        if (sTrace) {
+            sMod->warn("enemy health unavailable: hit rebalanced but no Arsenal Mastery XP was guessed");
+        }
+        return hit;
+    }
+
+    const double start_health = starting_health_for(victim, *health);
+    const double predicted_removed = std::min(*health, std::max(0.0, static_cast<double>(scaled)));
+    note_predicted_health(victim, std::max(0.0, *health - predicted_removed));
+    sPendingScores[victim] = PendingScore{
+        weapon,
+        *health,
+        start_health,
