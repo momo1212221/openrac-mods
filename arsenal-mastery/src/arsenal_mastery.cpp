@@ -37,7 +37,7 @@ using arsenal::Settings;
 using arsenal::WeaponDef;
 using openrac::gaddr;
 
-constexpr const char* kModVersion = "0.4.8";
+constexpr const char* kModVersion = "0.4.9";
 constexpr std::uint64_t kFlushTicks = 60;
 constexpr std::uint64_t kVictimLifetimeTicks = 1800;
 constexpr double kHardFactor = 1.3;
@@ -230,8 +230,12 @@ int sHudTweenPercent = 0;
 int sLevelPopupTicks = 0;
 using FontTextureFn = std::uint64_t (*)(int);
 using DrawQuadFn = void (*)(int, int, int, int, int, int, int, int, std::uint64_t, std::uint64_t);
+using BeginGifFn = void (*)(int);
+using EndGifFn = void (*)();
 FontTextureFn sFontTexture = nullptr;
 DrawQuadFn sDrawQuad = nullptr;
+BeginGifFn sBeginGif = nullptr;
+EndGifFn sEndGif = nullptr;
 bool sWeaponGridEnabled = false;
 int sHudUpgradeHold = 0;
 int sNanoDisplayHold = 0;
@@ -1106,50 +1110,82 @@ void draw_menu_label(const std::string& label, int x, int y,
 template <class Original>
 std::int32_t on_weapon_grid_draw(Original original, std::uint32_t grid) {
     const std::int32_t result = original(grid);
-    if (!sXpDisplay || !sWeaponGridEnabled || grid == 0 || sMod->loaded_level() < 0) return result;
+    if (!sXpDisplay || !sWeaponGridEnabled || !grid || sMod->loaded_level() < 0) return result;
+
+    // A new save may have only one row of three weapon icons. The old 3x5/ten
+    // weapon requirement always returned early in that case. Use the same grid
+    // metadata and icon placement algorithm as RAC1's draw_menu_item_grid().
     const int rows = get<std::int32_t>(grid + 0x40);
     const int cols = get<std::int32_t>(grid + 0x44);
+    if (rows <= 0 || cols <= 0 || rows * cols > arsenal::ui::kMaxMenuCells) return result;
     const gaddr cells = get<gaddr>(grid + 0x48);
-    if (cells == 0 || rows != 3 || cols != 5) return result;
-    const std::uint64_t font = sFontTexture(2);
-    // Verify this is the weapons page: reject other 5x3 item grids.
-    int weapon_cells = 0;
-    for (int index = 0; index < 15; ++index) {
-        const gaddr cell = cells + static_cast<gaddr>(index * 10);
+    if (!cells) return result;
+
+    int weapon_count = 0, occupied_count = 0;
+    for (int i = 0; i < rows * cols; ++i) {
+        const gaddr cell = cells + static_cast<gaddr>(i * 10);
         if (get<std::int16_t>(cell + 4) != 0) continue;
-        if (arsenal::weapon_from_item(get<std::int16_t>(cell + 6)) >= 0) ++weapon_cells;
+        ++occupied_count;
+        if (arsenal::weapon_from_item(get<std::int16_t>(cell + 6)) >= 0) ++weapon_count;
     }
-    if (weapon_cells < 10) return result;
-    for (int row = 0; row < 3; ++row) {
-        for (int col = 0; col < 5; ++col) {
-            const auto pos = arsenal::ui::weapon_cell(row, col);
-            const gaddr cell = cells + static_cast<gaddr>((row * 5 + col) * 10);
-            const int item = get<std::int16_t>(cell + 6);
-            if (get<std::int16_t>(cell + 4) != 0
-                || item != weapons()[static_cast<std::size_t>(pos.weapon)].item_id) continue;
-            const int weapon = pos.weapon, level = sProgression.level(weapon);
+    // Exclude unrelated inventory grids without requiring a fixed weapon count.
+    if (!weapon_count || occupied_count != weapon_count) return result;
+
+    const gaddr menu_moby = get<gaddr>(grid + 0x14);
+    if (!menu_moby) return result;
+    const gaddr pvars = get<gaddr>(menu_moby + 0x78);
+    if (!pvars) return result;
+    const float width = get<float>(pvars + 0x40);
+    const float height = get<float>(pvars + 0x44);
+    const float margin_x = get<float>(grid + 0x34);
+    const float margin_y = get<float>(grid + 0x38);
+
+    const bool ntsc = std::string(sDisc->version) == "ntsc";
+    // menu_grid_icon_width/height (two floats), from RAC1's native pause menu.
+    const gaddr dimensions = exe(ntsc ? 0x00160290u : 0x00160390u);
+    const float icon_width = get<float>(dimensions);
+    const float icon_height = get<float>(dimensions + 4);
+    if (!std::isfinite(width) || !std::isfinite(height)
+        || !std::isfinite(icon_width) || !std::isfinite(icon_height)
+        || !std::isfinite(margin_x) || !std::isfinite(margin_y)
+        || icon_width < 1.0f || icon_width > 256.0f
+        || icon_height < 1.0f || icon_height > 256.0f) return result;
+    const auto layout = arsenal::ui::menu_grid_geometry(
+        rows, cols, get<std::int32_t>(grid + 0x30),
+        get<std::int32_t>(grid + 0x20), get<std::int32_t>(grid + 0x24),
+        width, height, margin_x, margin_y, icon_width, icon_height);
+    if (!layout.valid || layout.icon_width < 8.0f || layout.icon_width > 96.0f
+        || layout.icon_height < 8.0f || layout.icon_height > 96.0f) return result;
+
+    // Native game texture rendering requires its own GIF page. The original
+    // draw() already closed its page; open and flush a new one for the bars.
+    sBeginGif(0);
+    const std::uint64_t font = sFontTexture(2);
+    for (int row = 0; row < rows; ++row) {
+        for (int col = 0; col < cols; ++col) {
+            const int index = row * cols + col;
+            const gaddr cell = cells + static_cast<gaddr>(index * 10);
+            if (get<std::int16_t>(cell + 4) != 0) continue;
+            const int weapon = arsenal::weapon_from_item(get<std::int16_t>(cell + 6));
+            if (weapon < 0) continue;
+
+            const auto icon = layout.cell(row, col);
+            const int bar_width = arsenal::ui::native_grid_bar_width(icon.width);
+            const int x = static_cast<int>(std::lround(icon.x + (icon.width - bar_width) / 2.0f));
+            const int y = static_cast<int>(std::lround(icon.y + icon.height + 2.0f));
+            const int level = sProgression.level(weapon);
             const int pct = arsenal::ui::percent(sProgression.progress(weapon));
             const std::uint32_t color = arsenal::ui::level_color(level);
-            const int x = static_cast<int>(std::lround(pos.center_x - 14));
-            const int y = static_cast<int>(std::lround(pos.center_y + arsenal::ui::kMenuBarOffset));
-            draw_menu_label("V" + std::to_string(level), x + 16, y - 4, color, font);
-            for (int dot = 0; dot < 15; ++dot) {
-                const int filled = (pct * 15 + 99) / 100;
+            const int filled = (pct * bar_width + 99) / 100;
+            for (int dot = 0; dot < bar_width; ++dot) {
                 draw_menu_char('I', x + dot, y, 1, 3,
-                               dot < filled ? color : 0x303846BBu, font);
+                               dot < filled ? color : 0x28394BB0u, font);
             }
+            // V1..V99 BELOW the icon and bar, never covering the icon itself.
+            draw_menu_label("V" + std::to_string(level), x, y + 5, color, font);
         }
     }
-    // The wrench sits in the menu's header rather than the 5x3 weapon grid.
-    const int wrench_level = sProgression.level(0);
-    const int wrench_pct = arsenal::ui::percent(sProgression.progress(0));
-    const std::uint32_t wrench_color = arsenal::ui::level_color(wrench_level);
-    draw_menu_label("V" + std::to_string(wrench_level), 174, 31, wrench_color, font);
-    for (int dot = 0; dot < 28; ++dot) {
-        const int filled = (wrench_pct * 28 + 99) / 100;
-        draw_menu_char('I', 174 + dot * 2, 43, 1, 4,
-                       dot < filled ? wrench_color : 0x303846BBu, font);
-    }
+    sEndGif();
     return result;
 }
 
@@ -1302,7 +1338,9 @@ void load(openrac::Mod& mod) {
     sOverlayEnabled = mod.has_overlay() && mod.on_overlay(draw_native_hud);
     sFontTexture = mod.function<FontTextureFn>("func_001F4868");
     sDrawQuad = mod.function<DrawQuadFn>("func_001F5800");
-    if (sFontTexture && sDrawQuad) {
+    sBeginGif = mod.function<BeginGifFn>("func_001F4630");
+    sEndGif = mod.function<EndGifFn>("func_001F4748");
+    if (sFontTexture && sDrawQuad && sBeginGif && sEndGif) {
         try {
             mod.hook<openrac::rac1::Menu_ItemGrid_Draw>(
                 [](auto original, std::uint32_t grid) { return on_weapon_grid_draw(original, grid); });
@@ -1315,7 +1353,7 @@ void load(openrac::Mod& mod) {
         mod.warn("Native weapon grid font unavailable; gameplay XP HUD stays active");
     }
 
-    // No additional mod menu page. The weapon grid is rendered by the game.\n
+    // No additional mod menu page. The weapon grid is rendered by the game.
     mod.info(
         std::string("Arsenal Mastery ") + kModVersion + " loaded on " + std::string(mod.version())
         + "; per-save progression, V1-V99 core, Nanotech and ammo progression enabled"
