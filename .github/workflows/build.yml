@@ -284,7 +284,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          TAG: ${{ github.ref == 'refs/heads/arsenal-mastery-port' && 'arsenal-mastery-v0.1.0' || github.ref_name }}
+          TAG: ${{ github.ref == 'refs/heads/arsenal-mastery-port' && 'arsenal-mastery-v0.2.0' || github.ref_name }}
         run: |
           sdk=$(python3 -c 'import json; print(json.load(open("sdk.lock"))["version"])')
           printf 'Built by the build workflow from %s, against the OpenRAC mod SDK %s.\n\nInstall: paste this repository'"'"'s address in the OpenRAC launcher'"'"'s Mods tab, or add a .zip there.\n' \
