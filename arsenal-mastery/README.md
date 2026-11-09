@@ -1,74 +1,97 @@
 # Arsenal Mastery — OpenRAC port
 
-This is a native OpenRAC port of **Arsenal Mastery** from
+This is the native OpenRAC port of **Arsenal Mastery** from
 [RAC-RS](https://github.com/AsobiCodes/rac-rs/tree/main/bundled/mods/arsenal-mastery).
 
-The goal is feature parity without importing RAC-RS's private `omni.*` host extensions into
-OpenRAC. The port therefore lands in reviewable milestones and uses OpenRAC's stable mod hooks.
+Version **0.2.0** replaces the fragile first milestone with OpenRAC's current 1.14 APIs.
 
-## Implemented in this port
+## Implemented
 
 - Damage-based weapon XP.
-- The original V1–V5 thresholds and per-weapon XP scaling.
-- The original V1–V5 weapon power curve.
-- Projectile / attacker attribution for the RAC1 arsenal.
-- The original planet-based enemy durability curve.
+- Original V1–V5 XP thresholds and per-weapon XP scaling.
+- Original V1–V5 weapon power curve.
+- Direct hero attacks resolved through OpenRAC's hero/figure API instead of hard-coded hero globals.
+- Projectile attribution through OpenRAC moby slots plus the original Arsenal Mastery projectile-class table.
+- Non-hero world targets no longer depend on an incomplete fixed enemy-class whitelist.
+- Original planet enemy durability curve.
 - Hard rebalance multiplier.
-- New Game resets progression.
-- New Game+ keeps progression for the running session and applies the original NG+ rebalance factor.
-- PAL and NTSC-U support.
-- Trace logging for attribution and balance testing.
+- New Game starts fresh progression.
+- New Game+ preserves progression.
+- **Persistent XP per OpenRAC memory-card slot.**
+- Unsaved New Game XP transfers to its slot when the game is first saved.
+- **Enhanced RAC Style in-game XP panel.**
+- Visible V1–V5 progress bar.
+- Level-up banner.
+- Trace logging remains available for diagnostics.
+- PAL and NTSC-U.
 
-The core uses `rac1.combat.get_hit` rather than RAC-RS's
-`rac1.omni.damage.resolve`. Hits are classified from the game's hit record and moby classes, and
-the damage in the hit record is scaled before the enemy consumes it.
+## Persistence
 
-## Not yet at RAC-RS parity
+Arsenal Mastery stores only its own progression in OpenRAC's private mod data directory:
 
-RAC-RS Arsenal Mastery uses host services that do not currently have direct equivalents in the
-OpenRAC script API. They are intentionally **not faked** in this first port:
+`arsenal-mastery-xp-v2.dat`
 
-- per-save Arsenal Mastery data and migration;
-- exact post-damage health removal and last-hit XP bonus;
-- Gold / Mega / Giga / Omega / endless V99 progression;
+It does not rewrite the game's memory-card save. Each OpenRAC save slot gets its own weapon-XP
+table. The file is written periodically and immediately on a weapon level-up.
+
+## Progression
+
+V2, V3, V4 and V5 begin at cumulative base XP:
+
+| Level | Base XP |
+| --- | ---: |
+| V1 | 0 |
+| V2 | 750 |
+| V3 | 2,250 |
+| V4 | 5,000 |
+| V5 | 10,000 |
+
+Per-weapon scaling from the original mod remains in place: early weapons use 1.0, mid-game weapons
+0.75 and late weapons 0.5.
+
+The original power multipliers remain **1.0, 1.2, 1.5, 1.9, 2.5**.
+
+## OpenRAC UI
+
+The equipped supported weapon now displays:
+
+- weapon name;
+- V1–V5 badge;
+- current / next XP;
+- segmented five-stage progression;
+- RAC-style level-up banner.
+
+This removes the old situation where the port could technically earn XP with no visible indication.
+
+## Enhanced Weapons compatibility
+
+Arsenal Mastery is intended to own gameplay progression when it is installed together with
+Enhanced Weapons. Enhanced Weapons should leave its hit-marker/visual effects enabled but disable
+its own XP and damage progression to avoid double scaling.
+
+## Remaining parity gaps
+
+The port still intentionally does not claim full RAC-RS feature parity for:
+
+- Gold / Mega / Giga / endless V99 progression;
 - Gold-case integration;
 - Nanotech levelling;
 - ammo-capacity progression;
 - perks and special weapon behaviours;
-- pause-menu XP bars, icons and level-up HUD drawing.
+- exact post-damage health-removed / last-hit XP accounting.
 
-XP currently lives for the lifetime of the game process. Starting a new game clears it; entering
-New Game+ in the same process keeps it. Loading a different save does not yet restore separate
-Arsenal Mastery progression.
-
-Those items should be added as focused follow-up changes once the required save/UI/gameplay
-interfaces are agreed with OpenRAC maintainers.
-
-## Progression carried over from RAC-RS
-
-V2, V3, V4 and V5 start at cumulative base XP 750, 2250, 5000 and 10000. The original weapon
-scales are retained: early weapons use 1.0, mid-game weapons 0.75 and late weapons 0.5.
-
-The V1–V5 power multipliers are 1.0, 1.2, 1.5, 1.9 and 2.5.
+Those are separate gameplay systems, not required for reliable V1–V5 progression.
 
 ## Testing
 
-Enable **Trace** in the launcher and play with several weapons on multiple planets. The log reports
-the attributed weapon, XP gain, V-level, original damage, scaled damage and current rebalance
-factor.
-
-Important cases for review:
-
-1. direct Wrench hits;
-2. Blaster / Pyrocitor / Devastator projectile attribution;
-3. repeated hit-record reads (must not award the same hit twice);
-4. level transitions and increasing rebalance;
-5. New Game reset;
-6. New Game+ preserving session progression.
+For normal play, the HUD is enough to verify progression. For diagnosis, enable **Trace** in the
+launcher; each attributed hit logs weapon, XP gain, total XP, V-level, original/scaled damage and
+rebalance factor.
 
 ## Attribution
 
 Original Arsenal Mastery design and RAC-RS implementation: **AsobiCodes**, MIT licensed.
 
-This OpenRAC port keeps the original license and behavior constants where applicable. It contains
-no game assets and requires the player's own copy of Ratchet & Clank.
+OpenRAC persistence/HUD integration and port hardening: **Moritz Wallinger**.
+
+No game assets are included.
