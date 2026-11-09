@@ -65,6 +65,14 @@ The equipped supported weapon now displays:
 
 This removes the old situation where the port could technically earn XP with no visible indication.
 
+### Multiplayer authority
+
+When the `multiplayer` mod is loaded, Arsenal Mastery still records persistent weapon XP and
+shows V1-V5 progression, but it does not replay a second locally scaled hit. Multiplayer remains
+the authority for network damage, preventing duplicate host/client damage events.
+
+Solo play keeps the full Arsenal Mastery V1-V5 damage curve.
+
 ## Enhanced Weapons compatibility
 
 Arsenal Mastery is intended to own gameplay progression when it is installed together with
