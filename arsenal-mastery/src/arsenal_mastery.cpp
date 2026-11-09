@@ -253,6 +253,9 @@ int current_health(int max_orbs) {
 }
 
 void reset_runtime_state() {
+    sLevelPopups.clear();
+    sOverlayWeapon = -1;
+    sOverlayWeaponChanged = sTick;
     sSeen.fill(SeenHit{});
     sVictims.clear();
     sPendingScores.clear();
