@@ -21,7 +21,18 @@ struct LevelUp {
     int level = 1;
     std::uint64_t tick = 0;
 };
+struct MenuCell {
+    int weapon = -1;
+    bool owned = false;
+    int level = 1;
+    float progress = 0.0f;
+};
 struct Snapshot {
+    // Only the game's original five-by-three weapon grid; not other menus.
+    bool menu_weapons = false;
+    std::array<MenuCell, 15> menu_cells{};
+    int wrench_level = 1;
+    float wrench_progress = 0.0f;
     bool enabled = false;
     bool playing = false;
     bool pal = true;
@@ -73,8 +84,32 @@ inline void progress_bar(const openrac_overlay& d, float x, float y, float width
 }
 
 inline void draw(const openrac_overlay* overlay, const Snapshot& s) {
-    if (overlay == nullptr || !s.enabled || !s.playing) return;
+    if (overlay == nullptr || !s.enabled) return;
     const auto& d = *overlay;
+
+    // Overlay the original icons; do not draw a replacement weapon menu.
+    if (s.menu_weapons) {
+        for (std::size_t i = 0; i < s.menu_cells.size(); ++i) {
+            const auto& cell = s.menu_cells[i];
+            if (cell.weapon < 0 || !cell.owned) continue;
+            const float x = 44.8f + 42.5f * static_cast<float>(i % 5);
+            const float y = 110.8f + 42.5f * static_cast<float>(i / 5) + 19.5f;
+            progress_bar(d, x - 14.0f, y, 28.0f, 3.0f, cell.progress,
+                         level_colour(cell.level), 210);
+            char level[8]{};
+            std::snprintf(level, sizeof level, "V%d", std::clamp(cell.level, 1, 99));
+            text(d, x + 16.0f, y - 6.0f, 7.0f, level_colour(cell.level), level);
+        }
+        // The wrench is in the weapons header, separate from the icon grid.
+        progress_bar(d, 174.0f, 43.0f, 56.0f, 4.0f, s.wrench_progress,
+                     level_colour(s.wrench_level), 210);
+        char wrench_level[8]{};
+        std::snprintf(wrench_level, sizeof wrench_level, "V%d",
+                      std::clamp(s.wrench_level, 1, 99));
+        text(d, 174.0f, 30.0f, 8.0f, level_colour(s.wrench_level), wrench_level);
+        return;
+    }
+    if (!s.playing) return;
 
     // HUD below the game's own ammo panel. Never draw fake activation messages.
     if (s.held_weapon >= 0) {
