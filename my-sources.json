@@ -1,6 +1,6 @@
 {
   "format": 1,
-  "bundle_version": "1.0.0",
+  "bundle_version": "1.0.1",
   "mods": [
     {
       "id": "modern-controls",
@@ -175,6 +175,14 @@
       "tag": "openrac-enhancements-v0.3.0",
       "mode": "native",
       "note": "Current Enhanced RAC accessibility build. The older hold-to-mash repo uses the same id and is kept as legacy only."
+    },
+    {
+      "id": "arsenal-mastery",
+      "version": "0.1.0",
+      "repo": "momo1212221/openrac-mods",
+      "tag": "arsenal-mastery-v0.1.0",
+      "mode": "native",
+      "note": "Private OpenRAC port of AsobiCodes' RAC-RS Arsenal Mastery; not submitted to the official index."
     }
   ],
   "legacy": [
