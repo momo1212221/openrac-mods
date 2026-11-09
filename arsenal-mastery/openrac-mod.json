@@ -125,6 +125,13 @@
       "description": "Native ammo-aligned weapon XP bar and short level-up popup. Adds V1-V99 XP bars to the original weapons icon grid when OpenRAC supports menu overlays."
     },
     {
+      "key": "details_page",
+      "name": "Additional weapon statistics page",
+      "type": "bool",
+      "default": false,
+      "description": "Show the optional weapon detail page in Pause > Options. Disable for native-only Arsenal Mastery HUD and original weapons grid."
+    },
+    {
       "key": "start_level",
       "name": "Starting weapon level",
       "type": "choice",
