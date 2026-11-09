@@ -1,6 +1,6 @@
 {
   "format": 1,
-  "bundle_version": "1.0.2",
+  "bundle_version": "1.0.3",
   "mods": [
     {
       "id": "modern-controls",
@@ -150,11 +150,11 @@
     },
     {
       "id": "enhanced-weapons",
-      "version": "0.3.1",
+      "version": "0.3.2",
       "repo": "momo1212221/OpenRAC",
-      "tag": "openrac-enhancements-v0.3.1",
+      "tag": "openrac-enhancements-v0.3.2",
       "mode": "native",
-      "note": "Defers XP/damage progression to Arsenal Mastery when both are loaded; visual effects remain active."
+      "note": "Immediately defers XP/damage progression to Arsenal Mastery when both are loaded; hit markers, haze and visual effects remain active."
     },
     {
       "id": "enhanced-audio",
