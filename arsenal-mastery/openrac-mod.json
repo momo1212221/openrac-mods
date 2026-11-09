@@ -2,7 +2,7 @@
   "format": 2,
   "id": "arsenal-mastery",
   "name": "Arsenal Mastery",
-  "version": "0.4.7",
+  "version": "0.4.8",
   "author": "AsobiCodes — original developer · Moritz Wallinger — OpenRAC port",
   "description": "Native weapon-grid XP levels/bars, ammo-adjacent gameplay XP HUD and short level-up indicator; per-save V1-V99 progression, Nanotech, rebalancing and ammunition progression.",
   "license": "MIT",
