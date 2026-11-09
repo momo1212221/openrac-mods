@@ -1,0 +1,284 @@
+{
+  "format": 2,
+  "id": "arsenal-mastery",
+  "name": "Arsenal Mastery",
+  "version": "0.4.3",
+  "author": "AsobiCodes / Moritz Wallinger",
+  "description": "OpenRAC port of Arsenal Mastery: post-hit health-delta weapon XP with death-confirmed last-hit bonus, per-save V1-V99 progression, level power, enemy rebalance, Nanotech progression, ammo-capacity progression and survival kill refunds.",
+  "license": "MIT",
+  "homepage": "https://github.com/AsobiCodes/rac-rs/tree/main/bundled/mods/arsenal-mastery",
+  "api": "1.12",
+  "games": {
+    "rac1": [
+      "pal",
+      "ntsc"
+    ]
+  },
+  "hooks": [
+    "rac1.combat.get_hit",
+    "rac1.player.take_damage",
+    "rac1.moby.record_death",
+    "rac1.level.load_gameplay",
+    "rac1.save.new_game",
+    "rac1.save.new_game_plus"
+  ],
+  "settings": [
+    {
+      "key": "xp_rate",
+      "name": "Weapon XP rate",
+      "type": "float",
+      "default": 1,
+      "min": 0.5,
+      "max": 3,
+      "step": 0.25,
+      "description": "Multiplier for weapon XP earned from enemy damage."
+    },
+    {
+      "key": "level_cap",
+      "name": "Weapon level cap",
+      "type": "choice",
+      "default": "uya",
+      "choices": [
+        {
+          "value": "uya",
+          "name": "V8 (Up Your Arsenal style)"
+        },
+        {
+          "value": "endless",
+          "name": "Endless (up to V99)"
+        }
+      ],
+      "description": "V8 after Mega in the normal mode, or V99 in Endless."
+    },
+    {
+      "key": "rebalance",
+      "name": "Enemy rebalance",
+      "type": "choice",
+      "default": "standard",
+      "choices": [
+        {
+          "value": "off",
+          "name": "Off"
+        },
+        {
+          "value": "standard",
+          "name": "Standard"
+        },
+        {
+          "value": "hard",
+          "name": "Hard"
+        }
+      ],
+      "description": "Planet-based enemy durability curve from Arsenal Mastery."
+    },
+    {
+      "key": "nanotech",
+      "name": "Nanotech levels",
+      "type": "bool",
+      "default": true,
+      "description": "Grow Ratchet from 10 to 100 points (200 in New Game+) with Nanotech XP."
+    },
+    {
+      "key": "level_power",
+      "name": "Weapon level power",
+      "type": "bool",
+      "default": true,
+      "description": "Apply Arsenal Mastery's damage and ammo-capacity growth with weapon levels."
+    },
+    {
+      "key": "gold_at_v5",
+      "name": "Gold-equivalent V5 power",
+      "type": "bool",
+      "default": true,
+      "description": "Use Arsenal Mastery's Gold V5 target power. OpenRAC does not yet expose the retail Gold-case spare-bolt hook, so this does not grant the retail gold flag or visuals."
+    },
+    {
+      "key": "portable_mega",
+      "name": "Portable Mega unlock",
+      "type": "bool",
+      "default": true,
+      "description": "Let all weapons unlock Mega through XP in NG+/Endless as an OpenRAC fallback for retail Mega cases that are not exposed as stable mod hooks."
+    },
+    {
+      "key": "ammo_mode",
+      "name": "Ammo mode",
+      "type": "choice",
+      "default": "normal",
+      "choices": [
+        {
+          "value": "normal",
+          "name": "Normal"
+        },
+        {
+          "value": "survival",
+          "name": "Survival"
+        }
+      ],
+      "description": "Survival refunds one round on enemy kills. Exact half-ammo crate pickups need an additional OpenRAC pickup hook."
+    },
+    {
+      "key": "xp_display",
+      "name": "XP HUD",
+      "type": "bool",
+      "default": true,
+      "description": "Show the held weapon's level/XP and Nanotech progress in the HUD."
+    },
+    {
+      "key": "start_level",
+      "name": "Starting weapon level",
+      "type": "choice",
+      "default": "off",
+      "choices": [
+        {
+          "value": "off",
+          "name": "Off"
+        },
+        {
+          "value": "v2",
+          "name": "V2"
+        },
+        {
+          "value": "v3",
+          "name": "V3"
+        },
+        {
+          "value": "v4",
+          "name": "V4"
+        },
+        {
+          "value": "v5",
+          "name": "V5"
+        },
+        {
+          "value": "v6",
+          "name": "V6"
+        },
+        {
+          "value": "v7",
+          "name": "V7"
+        },
+        {
+          "value": "v8",
+          "name": "V8"
+        }
+      ],
+      "description": "Testing/sandbox minimum level; never lowers saved progress."
+    },
+    {
+      "key": "nanotech_xp_rate",
+      "name": "Nanotech XP rate",
+      "type": "float",
+      "default": 1,
+      "min": 0.25,
+      "max": 4,
+      "step": 0.25
+    },
+    {
+      "key": "weapon_damage",
+      "name": "Weapon damage",
+      "type": "float",
+      "default": 1,
+      "min": 0.25,
+      "max": 4,
+      "step": 0.25
+    },
+    {
+      "key": "enemy_damage",
+      "name": "Enemy damage",
+      "type": "float",
+      "default": 1,
+      "min": 0.25,
+      "max": 4,
+      "step": 0.25
+    },
+    {
+      "key": "trace",
+      "name": "Trace logging",
+      "type": "bool",
+      "default": false,
+      "description": "Detailed hit/XP/kill log for testing."
+    }
+  ],
+  "presets": [
+    {
+      "id": "default",
+      "name": "Default",
+      "values": {
+        "xp_rate": 1,
+        "level_cap": "uya",
+        "rebalance": "standard",
+        "nanotech": true,
+        "level_power": true,
+        "gold_at_v5": true,
+        "portable_mega": true,
+        "ammo_mode": "normal",
+        "xp_display": true,
+        "start_level": "off",
+        "nanotech_xp_rate": 1,
+        "weapon_damage": 1,
+        "enemy_damage": 1,
+        "trace": false
+      }
+    },
+    {
+      "id": "just_xp",
+      "name": "Just the XP",
+      "values": {
+        "xp_rate": 1,
+        "level_cap": "uya",
+        "rebalance": "off",
+        "nanotech": false,
+        "level_power": false,
+        "gold_at_v5": false,
+        "portable_mega": true,
+        "ammo_mode": "normal",
+        "xp_display": true,
+        "start_level": "off",
+        "nanotech_xp_rate": 1,
+        "weapon_damage": 1,
+        "enemy_damage": 1,
+        "trace": false
+      }
+    },
+    {
+      "id": "survival",
+      "name": "Survival",
+      "values": {
+        "xp_rate": 1,
+        "level_cap": "uya",
+        "rebalance": "hard",
+        "nanotech": true,
+        "level_power": true,
+        "gold_at_v5": true,
+        "portable_mega": true,
+        "ammo_mode": "survival",
+        "xp_display": true,
+        "start_level": "off",
+        "nanotech_xp_rate": 1,
+        "weapon_damage": 1,
+        "enemy_damage": 1,
+        "trace": false
+      }
+    },
+    {
+      "id": "endless",
+      "name": "Endless",
+      "values": {
+        "xp_rate": 1,
+        "level_cap": "endless",
+        "rebalance": "standard",
+        "nanotech": true,
+        "level_power": true,
+        "gold_at_v5": true,
+        "portable_mega": true,
+        "ammo_mode": "normal",
+        "xp_display": true,
+        "start_level": "off",
+        "nanotech_xp_rate": 1,
+        "weapon_damage": 1,
+        "enemy_damage": 1,
+        "trace": false
+      }
+    }
+  ]
+}
