@@ -1205,7 +1205,7 @@ void load(openrac::Mod& mod) {
     mod.on_frame(on_frame);
     sOverlayEnabled = mod.has_overlay() && mod.on_overlay(draw_native_hud);
 
-    if (mod.has_pause_items()) {
+    if (mod.has_pause_items() && mod.setting<bool>("details_page")) {
         // Both the menu's shared slots AND its global page pool can be full.
         // Neither failure is fatal for weapon XP, Nanotech or the native HUD.
         try {
