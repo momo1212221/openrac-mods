@@ -47,6 +47,35 @@ constexpr int ammo_box_width(int max_ammo) { return max_ammo >= 100 ? 95 : 70; }
 constexpr int hud_top(bool ntsc) { return ntsc ? 18 : 10; }
 constexpr int hud_bar_y(bool ntsc) { return hud_top(ntsc) + 32 + 1; }
 
+// Going Commando-style weapon XP: a slim red strip belonging to the game's
+// existing ammo badge. The original HUD element supplies the actual x and fade,
+// so we never render a detached panel at a fixed screen position.
+constexpr int kHudElementCount = 13;
+constexpr int kHudElementStride = 0x90;
+constexpr int kHudAmmoValueOffset = 0x08;
+constexpr int kHudAmmoXOffset = 0x50;
+constexpr int kHudAmmoFadeOffset = 0x70;
+constexpr int kHudAmmoPointerOffset = 0x80;
+constexpr int kHudOpenFadeSteps = 8;
+constexpr float kAmmoXpXOffset = 5.0f;
+constexpr float kAmmoXpHeight = 4.0f;
+
+constexpr float ammo_xp_width(int max_ammo) { return max_ammo >= 100 ? 90.0f : 68.0f; }
+constexpr float ammo_xp_x(int native_ammo_x) { return static_cast<float>(native_ammo_x) + kAmmoXpXOffset; }
+constexpr float ammo_xp_y(bool ntsc) { return static_cast<float>(hud_bar_y(ntsc)); }
+constexpr int hud_alpha(int fade_count) {
+    return std::clamp(fade_count, 0, kHudOpenFadeSteps) * 255 / kHudOpenFadeSteps;
+}
+constexpr int progress_tween(int displayed, int target) {
+    const int difference = std::clamp(target, 0, 100) - std::clamp(displayed, 0, 100);
+    return std::clamp(displayed, 0, 100) + std::clamp(difference, -5, 5);
+}
+// The first game has no weapon XP HUD, so use the red upgrade line of RAC2,
+// tinting completed and high-level weapons in their level colours.
+constexpr std::uint32_t ammo_xp_color(int level) {
+    return level < 5 ? 0xE65B49FFu : level_color(level);
+}
+
 // A 2-second HUD level-up, fading in and out for 0.4 seconds on either disc.
 constexpr int ticks_per_second(bool ntsc) { return ntsc ? 60 : 50; }
 constexpr int popup_ticks(bool ntsc) { return ticks_per_second(ntsc) * 2; }
