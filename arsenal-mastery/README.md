@@ -2,19 +2,28 @@
 
 OpenRAC port of **Arsenal Mastery** from RAC-RS.
 
-- **Original developer / design:** AsobiCodes\n- **OpenRAC port:** Moritz Wallinger (`momo1212221`)
+- **Original developer / design:** AsobiCodes
+- **OpenRAC port:** Moritz Wallinger (`momo1212221`)
 
 ## Install in OpenRAC Launcher
 
 In **Mods → Add a mod**, paste this repository/release link:
 
-`https://github.com/momo1212221/openrac-mods/releases/tag/arsenal-mastery-v0.4.5`
+`https://github.com/momo1212221/openrac-mods/releases/tag/arsenal-mastery-v0.4.6`
 
 OpenRAC chooses the archive for the current platform and verifies it against `SHA256SUMS`.
 
-## 0.4.5 status
+## 0.4.6 status
 
-0.4.5 keeps 0.4.4's pause-menu-slot fallback and adds a visible first-gameplay runtime notice, an always-visible XP-HUD fallback line, and OpenRAC `hero_pose()` as the preferred source for the held item and current health.
+0.4.6 keeps the 0.4.5 gameplay and runtime hardening, including `hero_pose()` for the held item and current health. The first-gameplay log stays available for diagnostics; a visible mod notice appears only with Trace logging enabled.
+
+### Native in-game UI
+
+- The pause-menu entry is **Weapons** instead of a branded mod page.
+- The game's own menus show two pages of selectable weapons; select a weapon for level, XP, damage, ammo and kill details. Nanotech has its own native detail page.
+- On OpenRAC interface 1.14, the weapon HUD uses a compact amber framed level/XP gauge. The Nanotech gauge appears briefly after earning XP; weapon upgrades flash a short message.
+- On interface 1.12/1.13, the display uses OpenRAC's game-font HUD text instead of a separate overlay.
+- If the shared pause-menu slots are filled by other mods, it tries the title menu; if those slots are also full, gameplay and HUD still load.
 
 Implemented:
 
@@ -29,8 +38,8 @@ Implemented:
 - planet-based enemy durability rebalance, Hard and NG+ multipliers;
 - Nanotech progression up to 100 points, 200 in NG+;
 - weapon ammo-capacity growth and Survival kill ammo refund;
-- held-weapon XP HUD and Nanotech HUD;
-- Arsenal Mastery page in Pause → Options;
+- native-looking weapon XP gauge, contextual Nanotech gauge, and fallback game-font HUD;
+- native Weapons pages in Pause → Options with weapon details;
 - PAL and NTSC-U;
 - Visibomb split-projectile attribution;
 - trace logging;

@@ -7,14 +7,17 @@
 // OpenRAC's first-party mod examples. It deliberately does not patch machine code.
 #include "progression.hpp"
 #include "persistence.hpp"
+#include "ui_style.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <array>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -32,7 +35,7 @@ using arsenal::Settings;
 using arsenal::WeaponDef;
 using openrac::gaddr;
 
-constexpr const char* kModVersion = "0.4.5";
+constexpr const char* kModVersion = "0.4.6";
 constexpr std::uint64_t kFlushTicks = 60;
 constexpr std::uint64_t kVictimLifetimeTicks = 1800;
 constexpr double kHardFactor = 1.3;
@@ -210,6 +213,19 @@ int sLastNanoLevel = 1;
 bool sHudVisible = false;
 bool sRuntimeAnnounced = false;
 int sUiPageIndex = 0;
+int sSelectedWeapon = 0;
+openrac::UiPage sWeaponDetails;
+bool sOverlayEnabled = false;
+
+// on_frame and the overlay renderer run on different threads: publish a compact atomic snapshot.
+std::atomic<int> sHudActive{0}, sHudWeapon{-1}, sHudLevel{1}, sHudPercent{0}, sHudMax{0};
+std::atomic<int> sHudNanoLevel{0}, sHudNanoPercent{0}, sHudShowNano{0}, sHudUpgradeTicks{0};
+std::array<int, arsenal::kWeaponCount> sHudKnownLevels{};
+int sHudUpgradeHold = 0;
+int sNanoDisplayHold = 0;
+double sNanoPreviousXp = -1.0;
+static_assert(arsenal::kWeaponCount == arsenal::ui::kWeaponsPerPage * 2,
+              "Update page mapping if the weapon count changes");
 
 const auto& weapons() { return arsenal::weapon_defs(); }
 
@@ -255,6 +271,11 @@ void reset_runtime_state() {
     sNanoMax = 10.0;
     sNanoLastOrbs = -1;
     sLastNanoLevel = sNanotech.level(sProgression.new_game_plus());
+    sHudKnownLevels.fill(0);
+    sHudUpgradeHold = 0;
+    sNanoDisplayHold = 0;
+    sNanoPreviousXp = -1.0;
+    sHudActive.store(0, std::memory_order_relaxed);
 }
 
 std::filesystem::path progress_path(int slot) {
@@ -832,100 +853,246 @@ void sync_challenge_mode() {
     }
 }
 
-std::string short_weapon_line(int weapon) {
-    const auto& def = weapons()[static_cast<std::size_t>(weapon)];
-    const auto& state = sProgression.state(weapon);
-    const int percent = static_cast<int>(std::lround(sProgression.progress(weapon) * 100.0));
-    std::ostringstream out;
-    out << def.display_name << "  V" << sProgression.level(weapon) << "  " << percent << "%  K" << state.kills;
-    return out.str();
-}
 
-openrac::UiContent progress_page_content() {
+openrac::UiContent weapon_list_content() {
     openrac::UiContent content;
-    content.title = sUiPageIndex == 0 ? "Arsenal Mastery 1/2" : "Arsenal Mastery 2/2";
-
-    if (sUiPageIndex == 0) {
-        std::ostringstream status;
-        status << "Save " << (sSaveSlot >= 0 ? std::to_string(sSaveSlot) : "-")
-               << (sProgression.new_game_plus() ? "  NG+" : "  New Game");
-        content.items.push_back(openrac::UiItem::text(status.str()));
-        if (sNanotechEnabled) {
-            std::ostringstream nano;
-            nano << "Nanotech N" << sNanotech.level(sProgression.new_game_plus())
-                 << "  " << static_cast<int>(std::lround(sNanotech.progress(sProgression.new_game_plus()) * 100.0)) << "%";
-            content.items.push_back(openrac::UiItem::text(nano.str()));
-        } else {
-            content.items.push_back(openrac::UiItem::text("Nanotech levels: Off"));
-        }
-        for (int i = 0; i < 8; ++i) content.items.push_back(openrac::UiItem::text(short_weapon_line(i)));
-        content.items.push_back(openrac::UiItem::button("Next page"));
-    } else {
-        for (int i = 8; i < static_cast<int>(weapons().size()); ++i) {
-            content.items.push_back(openrac::UiItem::text(short_weapon_line(i)));
-        }
-        content.items.push_back(openrac::UiItem::text("Portable Mega: XP fallback for case guns"));
-        content.items.push_back(openrac::UiItem::text("Gold case visuals/perks need more hooks"));
-        content.items.push_back(openrac::UiItem::button("Previous page"));
+    content.title = sUiPageIndex == 0 ? "Weapons 1/2" : "Weapons 2/2";
+    for (int row = 0; row < arsenal::ui::kWeaponsPerPage; ++row) {
+        const int i = arsenal::ui::weapon_for_row(sUiPageIndex, row);
+        const std::string label = std::string(weapons()[static_cast<std::size_t>(i)].display_name)
+                                  + "   V" + std::to_string(sProgression.level(i));
+        content.items.push_back(openrac::UiItem::button(label, sSaveSlot >= 0));
     }
-    content.footer = {"Progress is stored per save slot."};
+    content.items.push_back(openrac::UiItem::button("Nanotech", sSaveSlot >= 0 && sNanotechEnabled));
+    content.items.push_back(openrac::UiItem::button(
+        sUiPageIndex == 0 ? "More Weapons" : "Previous Weapons"
+    ));
+    // The real game renders these pages with its own cursor, sounds, font and default footer.
     return content;
 }
 
-void progress_page_event(const openrac::UiPage& page, const openrac::UiEvent& event) {
-    if (event.is(OPENRAC_UI_SHOW)) sUiPageIndex = 0;
-    if (event.is(OPENRAC_UI_CHOOSE)) sUiPageIndex = sUiPageIndex == 0 ? 1 : 0;
-    if (event.is(OPENRAC_UI_SHOW) || event.is(OPENRAC_UI_FRAME) || event.is(OPENRAC_UI_CHOOSE)) {
-        page.set(progress_page_content());
+openrac::UiContent weapon_detail_content() {
+    openrac::UiContent content;
+    if (sSelectedWeapon < 0) {
+        content.title = "Nanotech";
+        content.items.push_back(openrac::UiItem::text(
+            "Level  N" + std::to_string(sNanotech.level(sProgression.new_game_plus()))
+        ));
+        content.items.push_back(openrac::UiItem::text(
+            "Experience  " + std::to_string(arsenal::ui::percent(
+                sNanotech.progress(sProgression.new_game_plus())
+            )) + "%"
+        ));
+        if (sNanoPool >= 0.0) {
+            content.items.push_back(openrac::UiItem::text(
+                "Health  " + std::to_string(static_cast<int>(std::ceil(sNanoPool))) + "/"
+                           + std::to_string(static_cast<int>(std::lround(sNanoMax)))
+            ));
+        }
+        content.items.push_back(openrac::UiItem::text(
+            "Total XP  " + std::to_string(static_cast<std::uint64_t>(std::max(0.0, sNanotech.xp())))
+        ));
+    } else {
+        const int i = sSelectedWeapon;
+        const auto& def = weapons()[static_cast<std::size_t>(i)];
+        const auto& state = sProgression.state(i);
+        content.title = def.display_name;
+        content.items.push_back(openrac::UiItem::text("Level  V" + std::to_string(sProgression.level(i))));
+        content.items.push_back(openrac::UiItem::text(
+            "Experience  " + std::to_string(arsenal::ui::percent(sProgression.progress(i))) + "%"
+        ));
+        content.items.push_back(openrac::UiItem::text(
+            "Total XP  " + std::to_string(static_cast<std::uint64_t>(std::max(0.0, state.xp)))
+        ));
+        content.items.push_back(openrac::UiItem::text(
+            "Enemies defeated  " + std::to_string(state.kills)
+        ));
+        std::ostringstream power;
+        power << std::fixed << std::setprecision(2) << sProgression.power(i);
+        content.items.push_back(openrac::UiItem::text("Weapon power  x" + power.str()));
+        if (def.has_ammo) {
+            std::ostringstream ammo;
+            ammo << std::fixed << std::setprecision(2)
+                 << arsenal::ammo_capacity_factor(sProgression.level(i));
+            content.items.push_back(openrac::UiItem::text("Ammo capacity  x" + ammo.str()));
+        }
+        content.items.push_back(openrac::UiItem::text(
+            "Level limit  V" + std::to_string(sProgression.cap(i))
+        ));
+    }
+    content.items.push_back(openrac::UiItem::button("Back to Weapons"));
+    return content;
+}
+
+void weapon_detail_event(const openrac::UiPage& page, const openrac::UiEvent& event) {
+    if (event.is(OPENRAC_UI_CHOOSE)) {
+        page.back();
+    } else if (event.is(OPENRAC_UI_SHOW) || event.is(OPENRAC_UI_FRAME)) {
+        page.set(weapon_detail_content());
     }
 }
 
-openrac_hud_text hud_line(const std::string& text, float y, float scale, std::uint8_t r, std::uint8_t g, std::uint8_t b) {
+void progress_page_event(const openrac::UiPage& page, const openrac::UiEvent& event) {
+    if (event.is(OPENRAC_UI_CHOOSE)) {
+        const int weapon = arsenal::ui::weapon_for_row(sUiPageIndex, event.item());
+        if (weapon >= 0 && sSaveSlot >= 0) {
+            sSelectedWeapon = weapon;
+            sWeaponDetails.set(weapon_detail_content());
+            sWeaponDetails.open();
+            return;
+        }
+        if (event.item() == arsenal::ui::kNanotechRow && sSaveSlot >= 0 && sNanotechEnabled) {
+            sSelectedWeapon = -1;
+            sWeaponDetails.set(weapon_detail_content());
+            sWeaponDetails.open();
+            return;
+        }
+        if (event.item() == arsenal::ui::kPageSwitchRow) {
+            sUiPageIndex = 1 - sUiPageIndex;
+            page.set(weapon_list_content());
+            page.set_cursor(0);
+            return;
+        }
+    }
+    if (event.is(OPENRAC_UI_SHOW) || event.is(OPENRAC_UI_FRAME)) {
+        page.set(weapon_list_content());
+    }
+}
+
+openrac_hud_text hud_line(const std::string& message, float y, float scale) {
     openrac_hud_text line{};
-    std::snprintf(line.text, sizeof line.text, "%s", text.c_str());
+    std::snprintf(line.text, sizeof line.text, "%s", message.c_str());
     line.x = 0.5f;
     line.y = y;
     line.scale = scale;
-    line.rgba[0] = r;
-    line.rgba[1] = g;
-    line.rgba[2] = b;
-    line.rgba[3] = 230;
+    line.rgba[0] = 205;
+    line.rgba[1] = 171;
+    line.rgba[2] = 112;
+    line.rgba[3] = 232;
     line.flags = OPENRAC_HUD_SMALL | OPENRAC_HUD_SHADOW;
     return line;
 }
 
 void update_hud() {
-    if (!sXpDisplay || !sMod->has_api_12() || sMod->loaded_level() < 0) {
-        if (sHudVisible && sMod->has_api_12()) {
-            sMod->hud_text_set({});
-            sHudVisible = false;
-        }
+    const bool active = sXpDisplay && sMod->has_api_12() && sMod->loaded_level() >= 0;
+    sHudActive.store(active ? 1 : 0, std::memory_order_relaxed);
+    if (!active) {
+        if (sHudVisible && sMod->has_api_12()) sMod->hud_text_set({});
+        sHudVisible = false;
         return;
     }
 
-    std::vector<openrac_hud_text> lines;
     const int held = arsenal::weapon_from_item(current_item());
+    sHudWeapon.store(held, std::memory_order_relaxed);
     if (held >= 0) {
-        const int pct = static_cast<int>(std::lround(sProgression.progress(held) * 100.0));
+        const int level = sProgression.level(held);
+        const int previous = sHudKnownLevels[static_cast<std::size_t>(held)];
+        if (previous > 0 && level > previous) sHudUpgradeHold = 150;
+        sHudKnownLevels[static_cast<std::size_t>(held)] = level;
+        const bool maxed = level >= sProgression.cap(held)
+                           && !(level == 5 && !sProgression.is_mega(held)
+                                && sProgression.mega_allowed_by_xp(held));
+        sHudLevel.store(level, std::memory_order_relaxed);
+        sHudPercent.store(arsenal::ui::percent(sProgression.progress(held)), std::memory_order_relaxed);
+        sHudMax.store(maxed ? 1 : 0, std::memory_order_relaxed);
+    }
+    if (sHudUpgradeHold > 0) --sHudUpgradeHold;
+    sHudUpgradeTicks.store(sHudUpgradeHold, std::memory_order_relaxed);
+
+    const bool nano_ready = sNanotechEnabled && sNanoPool >= 0.0;
+    if (nano_ready) {
+        const double xp = sNanotech.xp();
+        if (sNanoPreviousXp >= 0.0 && xp > sNanoPreviousXp + 0.001) sNanoDisplayHold = 180;
+        sNanoPreviousXp = xp;
+        if (sNanoDisplayHold > 0) --sNanoDisplayHold;
+        sHudNanoLevel.store(sNanotech.level(sProgression.new_game_plus()), std::memory_order_relaxed);
+        sHudNanoPercent.store(
+            arsenal::ui::percent(sNanotech.progress(sProgression.new_game_plus())),
+            std::memory_order_relaxed
+        );
+    } else {
+        sNanoDisplayHold = 0;
+        sNanoPreviousXp = -1.0;
+    }
+    sHudShowNano.store(nano_ready && sNanoDisplayHold > 0 ? 1 : 0, std::memory_order_relaxed);
+
+    if (sOverlayEnabled) {
+        if (sHudVisible) sMod->hud_text_set({});
+        sHudVisible = false;
+        return;
+    }
+    // On API 1.12/1.13 the game's original HUD font remains the fallback.
+    std::vector<openrac_hud_text> lines;
+    if (held >= 0) {
         lines.push_back(hud_line(
-            std::string(weapons()[static_cast<std::size_t>(held)].display_name) + " V"
-                + std::to_string(sProgression.level(held)) + "  EXP " + std::to_string(pct) + "%",
-            0.055f, 0.60f, 150, 170, 245
+            std::string(weapons()[static_cast<std::size_t>(held)].display_name) + "  V"
+                + std::to_string(sHudLevel.load(std::memory_order_relaxed)) + "  EXP "
+                + (sHudMax.load(std::memory_order_relaxed)
+                       ? "MAX"
+                       : std::to_string(sHudPercent.load(std::memory_order_relaxed)) + "%"),
+            0.075f, 0.62f
         ));
     }
-    if (sNanotechEnabled && sNanoPool >= 0.0) {
-        const int pct = static_cast<int>(std::lround(sNanotech.progress(sProgression.new_game_plus()) * 100.0));
+    if (nano_ready && sNanoDisplayHold > 0) {
         lines.push_back(hud_line(
-            "Nanotech " + std::to_string(static_cast<int>(std::ceil(sNanoPool))) + "/"
-                + std::to_string(static_cast<int>(std::lround(sNanoMax))) + "  EXP " + std::to_string(pct) + "%",
-            0.082f, 0.55f, 135, 155, 225
+            "Nanotech  N" + std::to_string(sHudNanoLevel.load(std::memory_order_relaxed)) + "  EXP "
+                + std::to_string(sHudNanoPercent.load(std::memory_order_relaxed)) + "%",
+            0.108f, 0.55f
         ));
-    }
-    if (lines.empty()) {
-        lines.push_back(hud_line("Arsenal Mastery 0.4.5 active", 0.055f, 0.55f, 145, 165, 235));
     }
     sMod->hud_text_set(lines);
     sHudVisible = !lines.empty();
+}
+
+void overlay_box(const openrac_overlay& draw, float x, float y, float w, float h, bool highlight = false) {
+    draw.rect(draw.context, x + 2, y + 2, w, h, 0x100B06A0u);
+    draw.rect(draw.context, x, y, w, h, highlight ? 0xFFD581FFu : 0xB67B3EEFu);
+    draw.rect(draw.context, x + 2, y + 2, w - 4, h - 4, 0x28170FD8u);
+    draw.rect(draw.context, x + 3, y + 3, w - 6, 1, 0xF9C774BDu);
+}
+
+void overlay_gauge(const openrac_overlay& draw, float x, float y, float w, int pct, bool health = false) {
+    draw.rect(draw.context, x, y, w, 9, 0x95612CF0u);
+    draw.rect(draw.context, x + 2, y + 2, w - 4, 5, 0x110B09FFu);
+    const float filled = arsenal::ui::filled_width(w - 4, pct);
+    if (filled > 0) {
+        draw.rect(draw.context, x + 2, y + 2, filled, 5, health ? 0x84C8C8FFu : 0xF5B34AFFu);
+        draw.rect(draw.context, x + 2, y + 2, filled, 1, health ? 0xC4F6E6FFu : 0xFFE1A1FFu);
+    }
+    for (int tick = 1; tick <= 3; ++tick) {
+        draw.rect(draw.context, x + w * (static_cast<float>(tick) / 4.0f), y + 2, 1, 5, 0x4C311DB8u);
+    }
+}
+
+void draw_native_hud(void*, const openrac_overlay* draw) {
+    // The overlay is on the window thread: only read the atomics, never game RAM or sProgression.
+    if (draw == nullptr || draw->rect == nullptr || draw->text == nullptr
+        || sHudActive.load(std::memory_order_relaxed) == 0) return;
+    constexpr float x = 165.0f, y = 19.0f, width = 190.0f;
+    const int weapon = sHudWeapon.load(std::memory_order_relaxed);
+    if (weapon >= 0 && weapon < static_cast<int>(weapons().size())) {
+        const bool upgraded = sHudUpgradeTicks.load(std::memory_order_relaxed) > 0;
+        overlay_box(*draw, x, y, width, 42, upgraded);
+        const std::string weapon_name = weapons()[static_cast<std::size_t>(weapon)].display_name;
+        const std::string level = "V" + std::to_string(sHudLevel.load(std::memory_order_relaxed));
+        draw->text(draw->context, x + 9, y + 4, 14, 0xFFE3A4FFu, weapon_name.c_str());
+        draw->text(draw->context, x + width - 38, y + 4, 13, 0xFFF2CBFFu, level.c_str());
+        overlay_gauge(*draw, x + 8, y + 27, 137, sHudPercent.load(std::memory_order_relaxed));
+        const std::string exp = sHudMax.load(std::memory_order_relaxed)
+                                    ? "MAX"
+                                    : std::to_string(sHudPercent.load(std::memory_order_relaxed)) + "%";
+        draw->text(draw->context, x + 149, y + 24, 11, 0xFFF2CBFFu, exp.c_str());
+        if (upgraded) draw->text(draw->context, x + 32, y + 44, 11, 0xFFE9A1FFu, "WEAPON UPGRADED!");
+    }
+    if (sHudShowNano.load(std::memory_order_relaxed) != 0) {
+        constexpr float ny = 68.0f;
+        overlay_box(*draw, x, ny, width, 29);
+        const std::string level = "N" + std::to_string(sHudNanoLevel.load(std::memory_order_relaxed));
+        draw->text(draw->context, x + 9, ny + 3, 11, 0xC5E2E4FFu, "Nanotech");
+        draw->text(draw->context, x + 163, ny + 3, 11, 0xC5E2E4FFu, level.c_str());
+        overlay_gauge(*draw, x + 8, ny + 18, width - 16,
+                      sHudNanoPercent.load(std::memory_order_relaxed), true);
+    }
 }
 
 void clean_victim_cache() {
@@ -946,8 +1113,9 @@ void on_frame() {
     clean_victim_cache();
     if (!sRuntimeAnnounced && sMod->loaded_level() >= 0) {
         sRuntimeAnnounced = true;
-        sMod->info("Arsenal Mastery 0.4.5 runtime active");
-        if (sMod->has_notice()) sMod->play_notice("Arsenal Mastery 0.4.5 active");
+        // Keep load diagnostics, but do not show a non-native mod banner in normal gameplay.
+        sMod->info("Arsenal Mastery 0.4.6 runtime active");
+        if (sTrace && sMod->has_notice()) sMod->play_notice("Arsenal Mastery 0.4.6 active");
     }
     update_hud();
     if (sSaveSlot >= 0 && sDirty && sTick >= sLastFlushTick + kFlushTicks) save_progress(sSaveSlot);
@@ -1028,18 +1196,20 @@ void load(openrac::Mod& mod) {
     mod.hook<NewGame>([](auto original) { on_new_game(original); });
     mod.hook<NewGamePlus>([](auto original, std::int32_t slot) { on_new_game_plus(original, slot); });
     mod.on_frame(on_frame);
+    sOverlayEnabled = mod.has_overlay() && mod.on_overlay(draw_native_hud);
 
     if (mod.has_pause_items()) {
+        sWeaponDetails = mod.ui_page(weapon_detail_event);
         const openrac::UiPage page = mod.ui_page(progress_page_event);
         try {
-            mod.ui_pause_item("Arsenal Mastery", page);
+            mod.ui_pause_item("Weapons", page);
         } catch (const openrac::Error& error) {
             // The pause menu has two shared mod slots. Enhanced Audio + Multiplayer can fill both.
             // A full menu must not prevent Arsenal Mastery's gameplay hooks, HUD and progression
             // from loading. Prefer a title-menu fallback; if that is full too, continue HUD-only.
             mod.warn(std::string("Pause menu entry unavailable; Arsenal Mastery continues: ") + error.what());
             try {
-                mod.ui_main_item(OPENRAC_UI_OPTIONS, "Arsenal Mastery", page);
+                mod.ui_main_item(OPENRAC_UI_OPTIONS, "Weapons", page);
                 mod.warn("Arsenal Mastery page moved to the title menu because the pause-menu mod slots are full");
             } catch (const openrac::Error& fallback_error) {
                 mod.warn(std::string("Title-menu fallback unavailable; Arsenal Mastery continues HUD-only: ")
@@ -1059,4 +1229,4 @@ void load(openrac::Mod& mod) {
 
 }  // namespace
 
-OPENRAC_MOD_CPP("arsenal-mastery", "0.4.5", load)
+OPENRAC_MOD_CPP("arsenal-mastery", "0.4.6", load)
