@@ -213,7 +213,6 @@ double sNanoPool = -1.0;
 double sNanoMax = 10.0;
 int sNanoLastOrbs = -1;
 int sLastNanoLevel = 1;
-bool sHudVisible = false;
 bool sRuntimeAnnounced = false;
 int sUiPageIndex = 0;
 int sSelectedWeapon = 0;
@@ -984,26 +983,11 @@ void progress_page_event(const openrac::UiPage& page, const openrac::UiEvent& ev
     }
 }
 
-openrac_hud_text hud_line(const std::string& message, float y, float scale) {
-    openrac_hud_text line{};
-    std::snprintf(line.text, sizeof line.text, "%s", message.c_str());
-    line.x = 0.5f;
-    line.y = y;
-    line.scale = scale;
-    line.rgba[0] = 205;
-    line.rgba[1] = 171;
-    line.rgba[2] = 112;
-    line.rgba[3] = 232;
-    line.flags = OPENRAC_HUD_SMALL | OPENRAC_HUD_SHADOW;
-    return line;
-}
-
 void update_hud() {
     const bool active = sXpDisplay && sMod->has_api_12() && sMod->loaded_level() >= 0;
     sHudActive.store(active ? 1 : 0, std::memory_order_relaxed);
     if (!active) {
-        if (sHudVisible && sMod->has_api_12()) sMod->hud_text_set({});
-        sHudVisible = false;
+        sHudAmmoAlpha.store(0, std::memory_order_relaxed);
         return;
     }
 
@@ -1073,32 +1057,10 @@ void update_hud() {
     }
     sHudShowNano.store(nano_ready && sNanoDisplayHold > 0 ? 1 : 0, std::memory_order_relaxed);
 
-    if (sOverlayEnabled) {
-        if (sHudVisible) sMod->hud_text_set({});
-        sHudVisible = false;
-        return;
-    }
-    // On API 1.12/1.13 the game's original HUD font remains the fallback.
-    std::vector<openrac_hud_text> lines;
-    if (held >= 0) {
-        lines.push_back(hud_line(
-            std::string(weapons()[static_cast<std::size_t>(held)].display_name) + "  V"
-                + std::to_string(sHudLevel.load(std::memory_order_relaxed)) + "  EXP "
-                + (sHudMax.load(std::memory_order_relaxed)
-                       ? "MAX"
-                       : std::to_string(sHudPercent.load(std::memory_order_relaxed)) + "%"),
-            0.075f, 0.62f
-        ));
-    }
-    if (nano_ready && sNanoDisplayHold > 0) {
-        lines.push_back(hud_line(
-            "Nanotech  N" + std::to_string(sHudNanoLevel.load(std::memory_order_relaxed)) + "  EXP "
-                + std::to_string(sHudNanoPercent.load(std::memory_order_relaxed)) + "%",
-            0.108f, 0.55f
-        ));
-    }
-    sMod->hud_text_set(lines);
-    sHudVisible = !lines.empty();
+    // No separate text-based HUD on older SDKs: it would recreate the ugly
+    // detached overlay. Progression remains active without the visual until
+    // the game exposes the native overlay callback (OpenRAC API 1.14).
+
 }
 
 std::uint64_t menu_gs_color(std::uint32_t rgba) {
