@@ -1,16 +1,16 @@
 # Arsenal Mastery for OpenRAC
 
-OpenRAC port of **Arsenal Mastery** from RAC-RS. Original mod and design: **AsobiCodes**. OpenRAC port: **Moritz Wallinger**.
+OpenRAC port of **Arsenal Mastery** from RAC-RS.\n\n- **Original developer / design:** AsobiCodes\n- **OpenRAC port:** Moritz Wallinger (`momo1212221`)
 
 ## Install in OpenRAC Launcher
 
 In **Mods → Add a mod**, paste this repository/release link:
 
-`https://github.com/momo1212221/openrac-mods/releases/tag/arsenal-mastery-v0.4.3`
+`https://github.com/momo1212221/openrac-mods/releases/tag/arsenal-mastery-v0.4.4`
 
 OpenRAC chooses the archive for the current platform and verifies it against `SHA256SUMS`.
 
-## 0.4.3 status
+## 0.4.4 status
 
 Implemented:
 
