@@ -268,6 +268,13 @@ int current_health(int max_orbs) {
 }
 
 void reset_runtime_state() {
+    sUiEventCount = 0;
+    sUiHeld = -1;
+    sUiSmooth = 0.0f;
+    {
+        std::lock_guard<std::mutex> guard(sNativeUiMutex);
+        sNativeUi = {};
+    }
     sSeen.fill(SeenHit{});
     sVictims.clear();
     sPendingScores.clear();
