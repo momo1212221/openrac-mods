@@ -11,7 +11,7 @@ Version **0.2.0** replaces the fragile first milestone with OpenRAC's current 1.
 - Original V1–V5 XP thresholds and per-weapon XP scaling.
 - Original V1–V5 weapon power curve.
 - Direct hero attacks resolved through OpenRAC's hero/figure API instead of hard-coded hero globals.
-- Projectile attribution through OpenRAC moby slots plus the original Arsenal Mastery projectile-class table.
+- Projectile attribution through OpenRAC hit-source metadata/moby slots plus the original Arsenal Mastery projectile-class table.
 - Non-hero world targets no longer depend on an incomplete fixed enemy-class whitelist.
 - Original planet enemy durability curve.
 - Hard rebalance multiplier.
@@ -52,6 +52,8 @@ Per-weapon scaling from the original mod remains in place: early weapons use 1.0
 The original power multipliers remain **1.0, 1.2, 1.5, 1.9, 2.5**.
 
 ## OpenRAC UI
+
+Arsenal Mastery uses OpenRAC's hit-watcher/replay API rather than taking the retail `Moby_GetHitMessage` hook. This lets it coexist with Enhanced Weapons without one mod preventing the other from loading.
 
 The equipped supported weapon now displays:
 
