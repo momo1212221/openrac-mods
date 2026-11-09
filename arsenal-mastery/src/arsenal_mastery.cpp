@@ -14,6 +14,8 @@
 #include "openrac/games/rac1.hpp"
 #include "openrac/mod.hpp"
 
+#include "progression.h"
+
 namespace {
 
 struct Weapon {
@@ -62,8 +64,6 @@ constexpr std::array<Attacker, 27> kAttackers = {{
     {483, 14}, {479, 14}, {203, 15}, {1900, 15}, {71, 0},
 }};
 
-constexpr std::array<double, 4> kXpThresholds = {{750.0, 2250.0, 5000.0, 10000.0}};
-constexpr std::array<double, 5> kPower = {{1.0, 1.2, 1.5, 1.9, 2.5}};
 constexpr std::array<double, 19> kRebalance = {{
     1.0, 1.0, 1.1, 1.2, 1.3, 1.45, 1.6, 1.75, 1.9, 2.0,
     2.1, 2.2, 2.3, 2.35, 2.4, 2.45, 2.5, 2.5, 2.5
@@ -176,27 +176,21 @@ double& weapon_xp(int weapon) {
 }
 
 double xp_threshold(int weapon, int next_level) {
-    if (weapon < 0 || weapon >= static_cast<int>(kWeapons.size()) || next_level < 2 || next_level > 5) {
+    if (weapon < 0 || weapon >= static_cast<int>(kWeapons.size())) {
         return 0;
     }
-    return kXpThresholds[static_cast<std::size_t>(next_level - 2)]
-           * kWeapons[static_cast<std::size_t>(weapon)].xp_scale;
+    return arsenal_mastery::xp_threshold(
+        kWeapons[static_cast<std::size_t>(weapon)].xp_scale, next_level
+    );
 }
 
 int weapon_level(int weapon) {
     if (weapon < 0 || weapon >= static_cast<int>(kWeapons.size())) {
         return 1;
     }
-    const double xp = weapon_xp(weapon);
-    int level = 1;
-    for (int next = 2; next <= 5; ++next) {
-        if (xp >= xp_threshold(weapon, next)) {
-            level = next;
-        } else {
-            break;
-        }
-    }
-    return level;
+    return arsenal_mastery::weapon_level(
+        weapon_xp(weapon), kWeapons[static_cast<std::size_t>(weapon)].xp_scale
+    );
 }
 
 void load_progress() {
@@ -315,7 +309,7 @@ int on_moby_hit(void*, const openrac_hit* source) {
     }
 
     const int before = weapon_level(weapon);
-    const double power = sLevelPower ? kPower[static_cast<std::size_t>(before - 1)] : 1.0;
+    const double power = sLevelPower ? arsenal_mastery::power_multiplier(before) : 1.0;
     const double balance = rebalance_factor();
     const double multiplier = power * sWeaponDamage / std::max(0.01, balance);
     const float wanted_damage = static_cast<float>(source->damage * multiplier);
