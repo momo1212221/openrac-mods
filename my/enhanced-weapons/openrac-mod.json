@@ -2,9 +2,9 @@
   "format": 2,
   "id": "enhanced-weapons",
   "name": "Enhanced Weapons",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "author": "Moritz Wallinger",
-  "description": "Weapon XP with V1-V5/Omega progression and an Enhanced RAC Style in-game HUD.",
+  "description": "Enhanced RAC weapon visuals and optional V1-V5/Omega progression; automatically defers gameplay progression to Arsenal Mastery when both are loaded.",
   "license": "MIT",
   "api": "1.14",
   "games": {

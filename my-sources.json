@@ -1,6 +1,6 @@
 {
   "format": 1,
-  "bundle_version": "1.0.1",
+  "bundle_version": "1.0.2",
   "mods": [
     {
       "id": "modern-controls",
@@ -112,17 +112,11 @@
     },
     {
       "id": "graphics-preparation",
-      "version": "0.17.0",
+      "version": "0.18.0",
       "repo": "momo1212221/openrac-graphics-preparation",
-      "tag": "v0.17.0",
-      "mode": "universal-native",
-      "platforms": [
-        "linux-x86_64",
-        "linux-aarch64",
-        "macos-arm64",
-        "macos-x86_64",
-        "windows-x86_64"
-      ]
+      "tag": "v0.18.0",
+      "mode": "native",
+      "note": "Includes cache-safe 'Add materials to last AI run' and Geometry Enhancement; existing AI cache identity is preserved."
     },
     {
       "id": "graphics-effects-runtime",
@@ -156,10 +150,11 @@
     },
     {
       "id": "enhanced-weapons",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "repo": "momo1212221/OpenRAC",
-      "tag": "openrac-enhancements-v0.3.0",
-      "mode": "native"
+      "tag": "openrac-enhancements-v0.3.1",
+      "mode": "native",
+      "note": "Defers XP/damage progression to Arsenal Mastery when both are loaded; visual effects remain active."
     },
     {
       "id": "enhanced-audio",
@@ -178,11 +173,11 @@
     },
     {
       "id": "arsenal-mastery",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "repo": "momo1212221/openrac-mods",
-      "tag": "arsenal-mastery-v0.1.0",
+      "tag": "arsenal-mastery-v0.2.0",
       "mode": "native",
-      "note": "Private OpenRAC port of AsobiCodes' RAC-RS Arsenal Mastery; not submitted to the official index."
+      "note": "Private OpenRAC port with persistent V1-V5 XP/HUD and multiplayer-safe progression; not submitted to the official index."
     }
   ],
   "legacy": [
