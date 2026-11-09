@@ -32,7 +32,7 @@ using arsenal::Settings;
 using arsenal::WeaponDef;
 using openrac::gaddr;
 
-constexpr const char* kModVersion = "0.4.4";
+constexpr const char* kModVersion = "0.4.5";
 constexpr std::uint64_t kFlushTicks = 60;
 constexpr std::uint64_t kVictimLifetimeTicks = 1800;
 constexpr double kHardFactor = 1.3;
@@ -922,7 +922,7 @@ void update_hud() {
         ));
     }
     if (lines.empty()) {
-        lines.push_back(hud_line("Arsenal Mastery 0.4.4 active", 0.055f, 0.55f, 145, 165, 235));
+        lines.push_back(hud_line("Arsenal Mastery 0.4.5 active", 0.055f, 0.55f, 145, 165, 235));
     }
     sMod->hud_text_set(lines);
     sHudVisible = !lines.empty();
@@ -946,8 +946,8 @@ void on_frame() {
     clean_victim_cache();
     if (!sRuntimeAnnounced && sMod->loaded_level() >= 0) {
         sRuntimeAnnounced = true;
-        sMod->info("Arsenal Mastery 0.4.4 runtime active");
-        if (sMod->has_notice()) sMod->play_notice("Arsenal Mastery 0.4.4 active");
+        sMod->info("Arsenal Mastery 0.4.5 runtime active");
+        if (sMod->has_notice()) sMod->play_notice("Arsenal Mastery 0.4.5 active");
     }
     update_hud();
     if (sSaveSlot >= 0 && sDirty && sTick >= sLastFlushTick + kFlushTicks) save_progress(sSaveSlot);
@@ -1059,4 +1059,4 @@ void load(openrac::Mod& mod) {
 
 }  // namespace
 
-OPENRAC_MOD_CPP("arsenal-mastery", "0.4.4", load)
+OPENRAC_MOD_CPP("arsenal-mastery", "0.4.5", load)
