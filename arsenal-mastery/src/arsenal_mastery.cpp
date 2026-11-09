@@ -8,6 +8,7 @@
 #include "progression.hpp"
 #include "persistence.hpp"
 #include "ui_style.hpp"
+#include "native_ui.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -26,6 +27,7 @@
 #include <vector>
 
 #include "openrac/mod.hpp"
+#include "openrac/games/rac1.hpp"
 
 namespace {
 
@@ -35,7 +37,7 @@ using arsenal::Settings;
 using arsenal::WeaponDef;
 using openrac::gaddr;
 
-constexpr const char* kModVersion = "0.4.7";
+constexpr const char* kModVersion = "0.4.8";
 constexpr std::uint64_t kFlushTicks = 60;
 constexpr std::uint64_t kVictimLifetimeTicks = 1800;
 constexpr double kHardFactor = 1.3;
@@ -53,13 +55,14 @@ struct Disc {
     std::uint32_t hit_ring;
     std::uint32_t challenge;
     std::uint32_t gold_flags;
+    std::uint32_t hud_slots;
 };
 
 constexpr Disc kDiscs[] = {
     {"pal", 0x0013F450u, 0x001416F8u, 0x0015EEA0u, 0x0013D530u, 0x00140508u,
-     0x001404E0u, 0x001C43B0u, 0x00178200u, 0x0015EF20u, 0x0013E620u},
+     0x001404E0u, 0x001C43B0u, 0x00178200u, 0x0015EF20u, 0x0013E620u, 0x00199C60u},
     {"ntsc", 0x0013F350u, 0x001415F8u, 0x0015EDA0u, 0x0013D428u, 0x00140408u,
-     0x001403E0u, 0x001C40B0u, 0x00178100u, 0x0015EE20u, 0x0013E520u},
+     0x001403E0u, 0x001C40B0u, 0x00178100u, 0x0015EE20u, 0x0013E520u, 0x00199B60u},
 };
 
 struct GetHit {
@@ -210,7 +213,6 @@ double sNanoPool = -1.0;
 double sNanoMax = 10.0;
 int sNanoLastOrbs = -1;
 int sLastNanoLevel = 1;
-bool sHudVisible = false;
 bool sRuntimeAnnounced = false;
 int sUiPageIndex = 0;
 int sSelectedWeapon = 0;
@@ -221,6 +223,16 @@ bool sOverlayEnabled = false;
 std::atomic<int> sHudActive{0}, sHudWeapon{-1}, sHudLevel{1}, sHudPercent{0}, sHudMax{0};
 std::atomic<int> sHudNanoLevel{0}, sHudNanoPercent{0}, sHudShowNano{0}, sHudUpgradeTicks{0};
 std::array<int, arsenal::kWeaponCount> sHudKnownLevels{};
+std::atomic<int> sHudAmmoCap{0}, sHudAmmoX{0}, sHudAmmoAlpha{0}, sHudSmoothPercent{0};
+std::atomic<int> sLevelPopupWeapon{-1}, sLevelPopupLevel{1}, sLevelPopupRemaining{0};
+int sHudTweenWeapon = -1;
+int sHudTweenPercent = 0;
+int sLevelPopupTicks = 0;
+using FontTextureFn = std::uint64_t (*)(int);
+using DrawQuadFn = void (*)(int, int, int, int, int, int, int, int, std::uint64_t, std::uint64_t);
+FontTextureFn sFontTexture = nullptr;
+DrawQuadFn sDrawQuad = nullptr;
+bool sWeaponGridEnabled = false;
 int sHudUpgradeHold = 0;
 int sNanoDisplayHold = 0;
 double sNanoPreviousXp = -1.0;
@@ -276,6 +288,15 @@ void reset_runtime_state() {
     sNanoDisplayHold = 0;
     sNanoPreviousXp = -1.0;
     sHudActive.store(0, std::memory_order_relaxed);
+    sHudAmmoAlpha.store(0, std::memory_order_relaxed);
+    sHudAmmoCap.store(0, std::memory_order_relaxed);
+    sHudAmmoX.store(0, std::memory_order_relaxed);
+    sHudSmoothPercent.store(0, std::memory_order_relaxed);
+    sHudTweenWeapon = -1;
+    sHudTweenPercent = 0;
+    sLevelPopupTicks = 0;
+    sLevelPopupWeapon.store(-1, std::memory_order_relaxed);
+    sLevelPopupRemaining.store(0, std::memory_order_relaxed);
 }
 
 std::filesystem::path progress_path(int slot) {
@@ -633,8 +654,11 @@ void show_level_notice(int weapon, int before, int after) {
     if (after <= before) return;
     const std::string text = std::string(weapons()[static_cast<std::size_t>(weapon)].display_name)
                              + " reached V" + std::to_string(after);
-    sMod->info(text);
-    if (sMod->has_notice()) sMod->play_notice(text);
+    sLevelPopupWeapon.store(weapon, std::memory_order_relaxed);
+    sLevelPopupLevel.store(after, std::memory_order_relaxed);
+    sLevelPopupTicks = arsenal::ui::popup_ticks(std::string(sDisc->version) == "ntsc");
+    sLevelPopupRemaining.store(sLevelPopupTicks, std::memory_order_relaxed);
+    if (sTrace) sMod->info(text);
 }
 
 void award_resolved_score(
@@ -960,31 +984,40 @@ void progress_page_event(const openrac::UiPage& page, const openrac::UiEvent& ev
     }
 }
 
-openrac_hud_text hud_line(const std::string& message, float y, float scale) {
-    openrac_hud_text line{};
-    std::snprintf(line.text, sizeof line.text, "%s", message.c_str());
-    line.x = 0.5f;
-    line.y = y;
-    line.scale = scale;
-    line.rgba[0] = 205;
-    line.rgba[1] = 171;
-    line.rgba[2] = 112;
-    line.rgba[3] = 232;
-    line.flags = OPENRAC_HUD_SMALL | OPENRAC_HUD_SHADOW;
-    return line;
-}
-
 void update_hud() {
     const bool active = sXpDisplay && sMod->has_api_12() && sMod->loaded_level() >= 0;
     sHudActive.store(active ? 1 : 0, std::memory_order_relaxed);
     if (!active) {
-        if (sHudVisible && sMod->has_api_12()) sMod->hud_text_set({});
-        sHudVisible = false;
+        sHudAmmoAlpha.store(0, std::memory_order_relaxed);
         return;
     }
 
-    const int held = arsenal::weapon_from_item(current_item());
+    const int held_item = current_item();
+    const int held = arsenal::weapon_from_item(held_item);
     sHudWeapon.store(held, std::memory_order_relaxed);
+    // Follow the actual RAC1 ammo HUD element, not an independent screen-space widget.
+    // The HUD holds its current ammo-counter pointer at +0x0C and its icon/frame
+    // fade at +0x70. When the game hides the ammo badge, the XP strip disappears too.
+    int ammo_x = 0, ammo_max = 0, ammo_alpha = 0;
+    if (held >= 0 && weapons()[static_cast<std::size_t>(held)].has_ammo && held_item >= 0) {
+        const gaddr expected = exe(sDisc->ammo) + static_cast<gaddr>(held_item) * 4u;
+        const gaddr slots = exe(sDisc->hud_slots);
+        for (int i = 0; i < arsenal::ui::kHudElementCount; ++i) {
+            const gaddr slot = slots + static_cast<gaddr>(i * arsenal::ui::kHudElementStride);
+            if (get<gaddr>(slot + arsenal::ui::kHudAmmoPointerOffset) != expected) continue;
+            const int max_ammo = get<std::int32_t>(slot + arsenal::ui::kHudAmmoValueOffset);
+            const int x = get<std::int32_t>(slot + arsenal::ui::kHudAmmoXOffset);
+            if (max_ammo <= 0 || max_ammo > 9999 || x < -100 || x > 512) continue;
+            ammo_x = x;
+            ammo_max = max_ammo;
+            ammo_alpha = arsenal::ui::hud_alpha(
+                get<std::uint8_t>(slot + arsenal::ui::kHudAmmoFadeOffset));
+            break;
+        }
+    }
+    sHudAmmoX.store(ammo_x, std::memory_order_relaxed);
+    sHudAmmoCap.store(ammo_max, std::memory_order_relaxed);
+    sHudAmmoAlpha.store(ammo_alpha, std::memory_order_relaxed);
     if (held >= 0) {
         const int level = sProgression.level(held);
         const int previous = sHudKnownLevels[static_cast<std::size_t>(held)];
@@ -994,7 +1027,15 @@ void update_hud() {
                            && !(level == 5 && !sProgression.is_mega(held)
                                 && sProgression.mega_allowed_by_xp(held));
         sHudLevel.store(level, std::memory_order_relaxed);
-        sHudPercent.store(arsenal::ui::percent(sProgression.progress(held)), std::memory_order_relaxed);
+        const int percent = arsenal::ui::percent(sProgression.progress(held));
+        sHudPercent.store(percent, std::memory_order_relaxed);
+        if (sHudTweenWeapon != held) {
+            sHudTweenWeapon = held;
+            sHudTweenPercent = percent;
+        } else {
+            sHudTweenPercent = arsenal::ui::progress_tween(sHudTweenPercent, percent);
+        }
+        sHudSmoothPercent.store(sHudTweenPercent, std::memory_order_relaxed);
         sHudMax.store(maxed ? 1 : 0, std::memory_order_relaxed);
     }
     if (sHudUpgradeHold > 0) --sHudUpgradeHold;
@@ -1017,83 +1058,140 @@ void update_hud() {
     }
     sHudShowNano.store(nano_ready && sNanoDisplayHold > 0 ? 1 : 0, std::memory_order_relaxed);
 
-    if (sOverlayEnabled) {
-        if (sHudVisible) sMod->hud_text_set({});
-        sHudVisible = false;
-        return;
-    }
-    // On API 1.12/1.13 the game's original HUD font remains the fallback.
-    std::vector<openrac_hud_text> lines;
-    if (held >= 0) {
-        lines.push_back(hud_line(
-            std::string(weapons()[static_cast<std::size_t>(held)].display_name) + "  V"
-                + std::to_string(sHudLevel.load(std::memory_order_relaxed)) + "  EXP "
-                + (sHudMax.load(std::memory_order_relaxed)
-                       ? "MAX"
-                       : std::to_string(sHudPercent.load(std::memory_order_relaxed)) + "%"),
-            0.075f, 0.62f
-        ));
-    }
-    if (nano_ready && sNanoDisplayHold > 0) {
-        lines.push_back(hud_line(
-            "Nanotech  N" + std::to_string(sHudNanoLevel.load(std::memory_order_relaxed)) + "  EXP "
-                + std::to_string(sHudNanoPercent.load(std::memory_order_relaxed)) + "%",
-            0.108f, 0.55f
-        ));
-    }
-    sMod->hud_text_set(lines);
-    sHudVisible = !lines.empty();
+    // No separate text-based HUD on older SDKs: it would recreate the ugly
+    // detached overlay. Progression remains active without the visual until
+    // the game exposes the native overlay callback (OpenRAC API 1.14).
+
 }
 
-void overlay_box(const openrac_overlay& draw, float x, float y, float w, float h, bool highlight = false) {
-    draw.rect(draw.context, x + 2, y + 2, w, h, 0x100B06A0u);
-    draw.rect(draw.context, x, y, w, h, highlight ? 0xFFD581FFu : 0xB67B3EEFu);
-    draw.rect(draw.context, x + 2, y + 2, w - 4, h - 4, 0x28170FD8u);
-    draw.rect(draw.context, x + 3, y + 3, w - 6, 1, 0xF9C774BDu);
+std::uint64_t menu_gs_color(std::uint32_t rgba) {
+    const std::uint32_t a = ((rgba & 0xFFu) * 128u + 127u) / 255u;
+    return (static_cast<std::uint64_t>(a) << 24)
+           | (((rgba >> 8) & 0xFFu) << 16)
+           | (((rgba >> 16) & 0xFFu) << 8)
+           | ((rgba >> 24) & 0xFFu);
 }
 
-void overlay_gauge(const openrac_overlay& draw, float x, float y, float w, int pct, bool health = false) {
-    draw.rect(draw.context, x, y, w, 9, 0x95612CF0u);
-    draw.rect(draw.context, x + 2, y + 2, w - 4, 5, 0x110B09FFu);
-    const float filled = arsenal::ui::filled_width(w - 4, pct);
-    if (filled > 0) {
-        draw.rect(draw.context, x + 2, y + 2, filled, 5, health ? 0x84C8C8FFu : 0xF5B34AFFu);
-        draw.rect(draw.context, x + 2, y + 2, filled, 1, health ? 0xC4F6E6FFu : 0xFFE1A1FFu);
+// Guest native font and sprite drawer. Both pointers are resolved before taking
+// the hook; a missing sprite function must never prevent the mod from loading.
+void draw_menu_char(char ch, int x, int y, int width, int height,
+                    std::uint32_t rgba, std::uint64_t texture) {
+    if (ch < 32 || ch > 126 || !sDrawQuad) return;
+    const std::uint32_t base = std::string(sDisc->version) == "ntsc"
+                                   ? 0x001DF3F0u : 0x001DF770u;
+    const gaddr metrics = exe(base) + static_cast<unsigned char>(ch) * 4u;
+    const int advance = get<std::int8_t>(metrics + 3);
+    if (advance <= 0) return;
+    sDrawQuad(x, y, width, height, get<std::uint8_t>(metrics),
+              get<std::uint8_t>(metrics + 1), 16, 16, menu_gs_color(rgba), texture);
+}
+void draw_menu_label(const std::string& label, int x, int y,
+                     std::uint32_t rgba, std::uint64_t texture) {
+    const std::uint32_t base = std::string(sDisc->version) == "ntsc"
+                                   ? 0x001DF3F0u : 0x001DF770u;
+    for (char c : label) {
+        if (c < 32 || c > 126) continue;
+        const gaddr metrics = exe(base) + static_cast<unsigned char>(c) * 4u;
+        const int advance = get<std::int8_t>(metrics + 3);
+        if (advance <= 0) continue;
+        if (c != ' ') {
+            const int top = get<std::int8_t>(metrics + 2);
+            draw_menu_char(c, x, y + top / 2, 8, 8, rgba, texture);
+        }
+        x += std::max(1, advance / 2);
     }
-    for (int tick = 1; tick <= 3; ++tick) {
-        draw.rect(draw.context, x + w * (static_cast<float>(tick) / 4.0f), y + 2, 1, 5, 0x4C311DB8u);
+}
+
+// This is the actual game's Weapons icon-grid draw hook, not a mod-created menu.
+template <class Original>
+std::int32_t on_weapon_grid_draw(Original original, std::uint32_t grid) {
+    const std::int32_t result = original(grid);
+    if (!sXpDisplay || !sWeaponGridEnabled || grid == 0 || sMod->loaded_level() < 0) return result;
+    const int rows = get<std::int32_t>(grid + 0x40);
+    const int cols = get<std::int32_t>(grid + 0x44);
+    const gaddr cells = get<gaddr>(grid + 0x48);
+    if (cells == 0 || rows != 3 || cols != 5) return result;
+    const std::uint64_t font = sFontTexture(2);
+    // Verify this is the weapons page: reject other 5x3 item grids.
+    int weapon_cells = 0;
+    for (int index = 0; index < 15; ++index) {
+        const gaddr cell = cells + static_cast<gaddr>(index * 10);
+        if (get<std::int16_t>(cell + 4) != 0) continue;
+        if (arsenal::weapon_from_item(get<std::int16_t>(cell + 6)) >= 0) ++weapon_cells;
     }
+    if (weapon_cells < 10) return result;
+    for (int row = 0; row < 3; ++row) {
+        for (int col = 0; col < 5; ++col) {
+            const auto pos = arsenal::ui::weapon_cell(row, col);
+            const gaddr cell = cells + static_cast<gaddr>((row * 5 + col) * 10);
+            const int item = get<std::int16_t>(cell + 6);
+            if (get<std::int16_t>(cell + 4) != 0
+                || item != weapons()[static_cast<std::size_t>(pos.weapon)].item_id) continue;
+            const int weapon = pos.weapon, level = sProgression.level(weapon);
+            const int pct = arsenal::ui::percent(sProgression.progress(weapon));
+            const std::uint32_t color = arsenal::ui::level_color(level);
+            const int x = static_cast<int>(std::lround(pos.center_x - 14));
+            const int y = static_cast<int>(std::lround(pos.center_y + arsenal::ui::kMenuBarOffset));
+            draw_menu_label("V" + std::to_string(level), x + 16, y - 4, color, font);
+            for (int dot = 0; dot < 15; ++dot) {
+                const int filled = (pct * 15 + 99) / 100;
+                draw_menu_char('I', x + dot, y, 1, 3,
+                               dot < filled ? color : 0x303846BBu, font);
+            }
+        }
+    }
+    // The wrench sits in the menu's header rather than the 5x3 weapon grid.
+    const int wrench_level = sProgression.level(0);
+    const int wrench_pct = arsenal::ui::percent(sProgression.progress(0));
+    const std::uint32_t wrench_color = arsenal::ui::level_color(wrench_level);
+    draw_menu_label("V" + std::to_string(wrench_level), 174, 31, wrench_color, font);
+    for (int dot = 0; dot < 28; ++dot) {
+        const int filled = (wrench_pct * 28 + 99) / 100;
+        draw_menu_char('I', 174 + dot * 2, 43, 1, 4,
+                       dot < filled ? wrench_color : 0x303846BBu, font);
+    }
+    return result;
 }
 
 void draw_native_hud(void*, const openrac_overlay* draw) {
-    // The overlay is on the window thread: only read the atomics, never game RAM or sProgression.
-    if (draw == nullptr || draw->rect == nullptr || draw->text == nullptr
+    // The OpenRAC overlay is already in the game's 512x448 space.
+    // All game-memory reads and animation updates are on the tick thread.
+    if (!draw || !draw->rect || !draw->text
         || sHudActive.load(std::memory_order_relaxed) == 0) return;
-    constexpr float x = 165.0f, y = 19.0f, width = 190.0f;
     const int weapon = sHudWeapon.load(std::memory_order_relaxed);
-    if (weapon >= 0 && weapon < static_cast<int>(weapons().size())) {
-        const bool upgraded = sHudUpgradeTicks.load(std::memory_order_relaxed) > 0;
-        overlay_box(*draw, x, y, width, 42, upgraded);
-        const std::string weapon_name = weapons()[static_cast<std::size_t>(weapon)].display_name;
-        const std::string level = "V" + std::to_string(sHudLevel.load(std::memory_order_relaxed));
-        draw->text(draw->context, x + 9, y + 4, 14, 0xFFE3A4FFu, weapon_name.c_str());
-        draw->text(draw->context, x + width - 38, y + 4, 13, 0xFFF2CBFFu, level.c_str());
-        overlay_gauge(*draw, x + 8, y + 27, 137, sHudPercent.load(std::memory_order_relaxed));
-        const std::string exp = sHudMax.load(std::memory_order_relaxed)
-                                    ? "MAX"
-                                    : std::to_string(sHudPercent.load(std::memory_order_relaxed)) + "%";
-        draw->text(draw->context, x + 149, y + 24, 11, 0xFFF2CBFFu, exp.c_str());
-        if (upgraded) draw->text(draw->context, x + 32, y + 44, 11, 0xFFE9A1FFu, "WEAPON UPGRADED!");
+    const int alpha = sHudAmmoAlpha.load(std::memory_order_relaxed);
+    if (weapon < 0 || weapon >= static_cast<int>(weapons().size()) || alpha <= 0) return;
+    if (!weapons()[static_cast<std::size_t>(weapon)].has_ammo) return;
+
+    // RAC2-style red weapon XP line, immediately below the existing ammo badge.
+    // The x position and visibility come from that exact game's HUD element.
+    const float x = arsenal::ui::ammo_xp_x(sHudAmmoX.load(std::memory_order_relaxed));
+    const float y = arsenal::ui::ammo_xp_y(std::string(sDisc->version) == "ntsc");
+    const float width = arsenal::ui::ammo_xp_width(sHudAmmoCap.load(std::memory_order_relaxed));
+    const int level = sHudLevel.load(std::memory_order_relaxed);
+    const int percent = sHudMax.load(std::memory_order_relaxed) ? 100
+                       : sHudSmoothPercent.load(std::memory_order_relaxed);
+    const auto fade = [alpha](std::uint32_t color) -> std::uint32_t {
+        return arsenal::ui::with_alpha(color, static_cast<int>(color & 0xFFu) * alpha / 255);
+    };
+    draw->rect(draw->context, x - 1, y - 1, width + 2, 6, fade(0x396184B4u));
+    draw->rect(draw->context, x, y, width, 4, fade(0x101C30E0u));
+    const float filled = arsenal::ui::filled_width(width - 2, percent);
+    if (filled > 0.0f) {
+        const std::uint32_t color = arsenal::ui::ammo_xp_color(level);
+        draw->rect(draw->context, x + 1, y + 1, filled, 2, fade(color));
+        draw->rect(draw->context, x + 1, y + 1, filled, 1, fade(0xFFD4C9A0u));
     }
-    if (sHudShowNano.load(std::memory_order_relaxed) != 0) {
-        constexpr float ny = 68.0f;
-        overlay_box(*draw, x, ny, width, 29);
-        const std::string level = "N" + std::to_string(sHudNanoLevel.load(std::memory_order_relaxed));
-        draw->text(draw->context, x + 9, ny + 3, 11, 0xC5E2E4FFu, "Nanotech");
-        draw->text(draw->context, x + 163, ny + 3, 11, 0xC5E2E4FFu, level.c_str());
-        overlay_gauge(*draw, x + 8, ny + 18, width - 16,
-                      sHudNanoPercent.load(std::memory_order_relaxed), true);
-    }
+    const int remaining = sLevelPopupRemaining.load(std::memory_order_relaxed);
+    const int popup_weapon = sLevelPopupWeapon.load(std::memory_order_relaxed);
+    const bool popup = remaining > 0 && popup_weapon == weapon;
+    const int popup_alpha = popup ? arsenal::ui::popup_alpha(
+        remaining, std::string(sDisc->version) == "ntsc") : 255;
+    const auto label = "V" + std::to_string(level);
+    const std::uint32_t label_color = popup ? arsenal::ui::level_color(level) : 0xC3E4F6FFu;
+    draw->text(draw->context, x + width + 5, y - 6, popup ? 11.0f : 9.0f,
+               fade(arsenal::ui::with_alpha(label_color, popup_alpha)), label.c_str());
+    // No extra screen, XP numbers, weapon-name text or floating Nanotech box.
 }
 
 void clean_victim_cache() {
@@ -1106,6 +1204,10 @@ void clean_victim_cache() {
 
 void on_frame() {
     ++sTick;
+    if (sLevelPopupTicks > 0) {
+        --sLevelPopupTicks;
+        sLevelPopupRemaining.store(sLevelPopupTicks, std::memory_order_relaxed);
+    }
     finalize_all_pending();
     sync_save_slot();
     sync_challenge_mode();
@@ -1115,8 +1217,8 @@ void on_frame() {
     if (!sRuntimeAnnounced && sMod->loaded_level() >= 0) {
         sRuntimeAnnounced = true;
         // Keep load diagnostics, but do not show a non-native mod banner in normal gameplay.
-        sMod->info("Arsenal Mastery 0.4.7 runtime active");
-        if (sTrace && sMod->has_notice()) sMod->play_notice("Arsenal Mastery 0.4.7 active");
+        sMod->info("Arsenal Mastery 0.4.8 runtime active");
+
     }
     update_hud();
     if (sSaveSlot >= 0 && sDirty && sTick >= sLastFlushTick + kFlushTicks) save_progress(sSaveSlot);
@@ -1198,31 +1300,22 @@ void load(openrac::Mod& mod) {
     mod.hook<NewGamePlus>([](auto original, std::int32_t slot) { on_new_game_plus(original, slot); });
     mod.on_frame(on_frame);
     sOverlayEnabled = mod.has_overlay() && mod.on_overlay(draw_native_hud);
-
-    if (mod.has_pause_items()) {
-        // Both the menu's shared slots AND its global page pool can be full.
-        // Neither failure is fatal for weapon XP, Nanotech or the native HUD.
+    sFontTexture = mod.function<FontTextureFn>("func_001F4868");
+    sDrawQuad = mod.function<DrawQuadFn>("func_001F5800");
+    if (sFontTexture && sDrawQuad) {
         try {
-            sWeaponDetails = mod.ui_page(weapon_detail_event);
-            const openrac::UiPage page = mod.ui_page(progress_page_event);
-            try {
-                mod.ui_pause_item("Weapons", page);
-            } catch (const openrac::Error& error) {
-                mod.warn(std::string("In-game Weapons entry unavailable: ") + error.what());
-                try {
-                    mod.ui_main_item(OPENRAC_UI_OPTIONS, "Weapons", page);
-                    mod.info("Weapons page available from the title menu");
-                } catch (const openrac::Error& fallback_error) {
-                    mod.warn(std::string("Title-menu entry unavailable; gameplay and HUD still work: ")
-                             + fallback_error.what());
-                }
-            }
+            mod.hook<openrac::rac1::Menu_ItemGrid_Draw>(
+                [](auto original, std::uint32_t grid) { return on_weapon_grid_draw(original, grid); });
+            sWeaponGridEnabled = true;
         } catch (const openrac::Error& error) {
-            mod.warn(std::string("Native Weapons pages unavailable; gameplay and HUD still work: ")
+            mod.warn(std::string("Native weapon menu unavailable; gameplay XP HUD stays active: ")
                      + error.what());
         }
+    } else {
+        mod.warn("Native weapon grid font unavailable; gameplay XP HUD stays active");
     }
 
+    // No additional mod menu page. The weapon grid is rendered by the game.\n
     mod.info(
         std::string("Arsenal Mastery ") + kModVersion + " loaded on " + std::string(mod.version())
         + "; per-save progression, V1-V99 core, Nanotech and ammo progression enabled"
@@ -1234,4 +1327,4 @@ void load(openrac::Mod& mod) {
 
 }  // namespace
 
-OPENRAC_MOD_CPP("arsenal-mastery", "0.4.7", load)
+OPENRAC_MOD_CPP("arsenal-mastery", "0.4.8", load)
