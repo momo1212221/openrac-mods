@@ -32,7 +32,7 @@ using arsenal::Settings;
 using arsenal::WeaponDef;
 using openrac::gaddr;
 
-constexpr const char* kModVersion = "0.4.3";
+constexpr const char* kModVersion = "0.4.4";
 constexpr std::uint64_t kFlushTicks = 60;
 constexpr std::uint64_t kVictimLifetimeTicks = 1800;
 constexpr double kHardFactor = 1.3;
@@ -1005,7 +1005,21 @@ void load(openrac::Mod& mod) {
 
     if (mod.has_pause_items()) {
         const openrac::UiPage page = mod.ui_page(progress_page_event);
-        mod.ui_pause_item("Arsenal Mastery", page);
+        try {
+            mod.ui_pause_item("Arsenal Mastery", page);
+        } catch (const openrac::Error& error) {
+            // The pause menu has two shared mod slots. Enhanced Audio + Multiplayer can fill both.
+            // A full menu must not prevent Arsenal Mastery's gameplay hooks, HUD and progression
+            // from loading. Prefer a title-menu fallback; if that is full too, continue HUD-only.
+            mod.warn(std::string("Pause menu entry unavailable; Arsenal Mastery continues: ") + error.what());
+            try {
+                mod.ui_main_item(OPENRAC_UI_OPTIONS, "Arsenal Mastery", page);
+                mod.warn("Arsenal Mastery page moved to the title menu because the pause-menu mod slots are full");
+            } catch (const openrac::Error& fallback_error) {
+                mod.warn(std::string("Title-menu fallback unavailable; Arsenal Mastery continues HUD-only: ")
+                         + fallback_error.what());
+            }
+        }
     }
 
     mod.info(
@@ -1019,4 +1033,4 @@ void load(openrac::Mod& mod) {
 
 }  // namespace
 
-OPENRAC_MOD_CPP("arsenal-mastery", "0.4.3", load)
+OPENRAC_MOD_CPP("arsenal-mastery", "0.4.4", load)
