@@ -37,7 +37,7 @@ using arsenal::Settings;
 using arsenal::WeaponDef;
 using openrac::gaddr;
 
-constexpr const char* kModVersion = "0.4.6";
+constexpr const char* kModVersion = "0.4.7";
 constexpr std::uint64_t kFlushTicks = 60;
 constexpr std::uint64_t kVictimLifetimeTicks = 1800;
 constexpr double kHardFactor = 1.3;
@@ -1221,7 +1221,7 @@ void on_frame() {
     if (!sRuntimeAnnounced && sMod->loaded_level() >= 0) {
         sRuntimeAnnounced = true;
         // Keep load diagnostics, but do not show a non-native mod banner in normal gameplay.
-        sMod->info("Arsenal Mastery 0.4.6 runtime active");
+        sMod->info("Arsenal Mastery 0.4.7 runtime active");
 
     }
     update_hud();
@@ -1326,4 +1326,4 @@ void load(openrac::Mod& mod) {
 
 }  // namespace
 
-OPENRAC_MOD_CPP("arsenal-mastery", "0.4.6", load)
+OPENRAC_MOD_CPP("arsenal-mastery", "0.4.7", load)
