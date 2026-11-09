@@ -1,70 +1,63 @@
 # Arsenal Mastery for OpenRAC
 
-## Experimental native game HUD (private development branch)
-
-This branch keeps the 0.4.7 gameplay, per-save progression and existing Weapons page intact.
-It replaces the large centered overlay and its permanent labels with a small V1-V99
-gauge under the native ammo panel. XP fill is eased, level colors track the original
-RAC-RS design, and short V-level popups fade out without using `play_notice`.
-The overlay is drawn only while playing using OpenRAC 1.14's `on_overlay`.
-
-**Not yet implemented:** XP bars on the **existing game's weapon icons**.
-OpenRAC 1.14 explicitly suppresses mod overlays while game menus are open. The
-existing mod-provided Weapons page is not equivalent to altering the native item grid.
-A host-level menu drawing callback or carefully validated dedicated hook is needed,
-and must be tested for both PAL/NTSC before claiming parity.
-
-`tests/native_ui_test.cpp` checks draw coordinates, color, popup expiry and
-menu suppression. It is registered with CTest; live gameplay and CI builds
-are not yet verified on this branch. The changes remain on the feature branch;
-no release tag or PR was created.
-
-
-OpenRAC port of **Arsenal Mastery** from RAC-RS.
+OpenRAC native C++ port of **Arsenal Mastery** from RAC-RS.
 
 - **Original developer / design:** AsobiCodes
 - **OpenRAC port:** Moritz Wallinger (`momo1212221`)
 
+## 0.4.8 native HUD and Weapons page
+
+The large centered extra HUD and persistent text messages have been removed in favor of:
+
+- a small animated weapon XP bar, aligned immediately below the original ammunition panel;
+- the original Arsenal Mastery V1–V99 color palette and a brief fade-out V-level indicator;
+- XP bars and V numbers directly beside existing weapon icons on the original 5×3 Weapons screen, with a separate wrench progress bar;
+- no level-up `play_notice` banner or permanent debug text;
+- an **optional** extra Weapons statistics page (new `details_page` setting, off by default).
+
+The weapons-grid integration uses the existing RAC1 item-grid draw hook to recognize
+the 15 original weapon slots. It never replaces the game's weapon icons and only draws
+XP for weapons owned by the player. The HUD snapshot is transferred safely from the
+game thread to the render thread.
+
+**Compatibility:** The standard OpenRAC 1.14 overlay API intentionally does not
+draw during menus. The original Weapons-grid bars therefore require
+`momo1212221/OpenRAC` with the opt-in `overlay_menus` host extension from
+`feat/arsenal-menu-overlay-opt-in-20261109` (or a build containing that change).
+The ammo HUD and level-up popup use the standard 1.14 gameplay overlay.
+If running an unmodified OpenRAC build, turn on `details_page` to inspect
+weapon levels in the native-styled optional details page.
+
+The grid positions are based on AsobiCodes' `bars.luau` coordinates (512×448);
+PAL, NTSC and widescreen need live visual review. This is an implementation,
+not yet a claim of pixel-perfect in-game parity.
+
 ## Install in OpenRAC Launcher
 
-In **Mods → Add a mod**, paste this repository/release link:
+In **Mods → Add a mod**, paste the release URL after the 0.4.8 tag is published:
 
-`https://github.com/momo1212221/openrac-mods/releases/tag/arsenal-mastery-v0.4.7`
+`https://github.com/momo1212221/openrac-mods/releases/tag/arsenal-mastery-v0.4.8`
 
-OpenRAC chooses the archive for the current platform and verifies it against `SHA256SUMS`.
+The launcher selects the correct platform archive and verifies `SHA256SUMS`.
+The prior 0.4.7 version remains available as a rollback.
 
-## 0.4.7 status
+## Gameplay systems preserved
 
-0.4.7 keeps the 0.4.5 gameplay and runtime hardening, including `hero_pose()` for the held item and current health. The first-gameplay log stays available for diagnostics; a visible mod notice appears only with Trace logging enabled.
+- post-hit, confirmed enemy health-delta weapon XP and death-confirmed kill credit;
+- V1–V5, Mega, Giga, Omega and optional Endless levels through V99;
+- original per-weapon XP scaling, damage/power curve and optional Portable Mega;
+- per-save-slot persistent XP, kill counts and Nanotech XP, with NG+ carry-over;
+- level-based ammo capacity, Survival kill refunds, enemy rebalance and Nanotech;
+- PAL / NTSC-U and Visibomb split projectile attribution;
+- trace logging (off by default).
 
-### Native in-game UI
+## Validation
 
-- The pause-menu entry is **Weapons** instead of a branded mod page.
-- The game's own menus show two pages of selectable weapons; select a weapon for level, XP, damage, ammo and kill details. Nanotech has its own native detail page.
-- On OpenRAC interface 1.14, the weapon HUD uses a compact amber framed level/XP gauge. The Nanotech gauge appears briefly after earning XP; weapon upgrades flash a short message.
-- On interface 1.12/1.13, the display uses OpenRAC's game-font HUD text instead of a separate overlay.
-- If the shared pause-menu slots or native-page pool are full, the gameplay and HUD still load. When possible, the Weapons page falls back to the title menu.
-- The weapon detail menu is also available in a new game before a memory-card save slot has been created.
-
-Implemented:
-
-- weapon XP from post-hit enemy health delta, capped to the hit's effective strength;
-- death-confirmed kill credit and the original 50% last-hit bonus;
-- original per-weapon XP scaling;
-- V1–V5 progression and damage curve;
-- Mega / Giga / Omega progression and Endless levels up to V99;
-- optional Portable Mega fallback for OpenRAC;
-- per-save-slot persistent XP, Mega point, kill counts and Nanotech XP;
-- New Game reset and New Game+ carry-over;
-- planet-based enemy durability rebalance, Hard and NG+ multipliers;
-- Nanotech progression up to 100 points, 200 in NG+;
-- weapon ammo-capacity growth and Survival kill ammo refund;
-- native-looking weapon XP gauge, contextual Nanotech gauge, and fallback game-font HUD;
-- native Weapons pages in Pause → Options with weapon details;
-- PAL and NTSC-U;
-- Visibomb split-projectile attribution;
-- trace logging;
-- standalone progression and persistence tests.
+`arsenal_mastery_native_ui` tests ammo bar coordinates, V5/V99 colors, popup
+expiry, original weapon-grid placement, ownership filtering, menu suppression
+and off-state behavior. Existing progression, persistence and UI-style tests
+remain registered with CTest. A successful CI build is necessary before release;
+automated tests do not replace a game screenshot comparison on both discs.
 
 ## OpenRAC-specific differences from RAC-RS
 
