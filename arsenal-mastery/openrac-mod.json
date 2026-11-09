@@ -4,7 +4,7 @@
   "name": "Arsenal Mastery",
   "version": "0.2.0",
   "author": "AsobiCodes / Moritz Wallinger",
-  "description": "OpenRAC Arsenal Mastery port with persistent per-save weapon XP, V1-V5 power progression, Enhanced RAC HUD, robust OpenRAC weapon attribution and enemy rebalance.",
+  "description": "OpenRAC Arsenal Mastery port with persistent per-save weapon XP, V1-V5 power progression, Enhanced RAC HUD, stable hit-watcher attribution and enemy rebalance.",
   "license": "MIT",
   "homepage": "https://github.com/AsobiCodes/rac-rs/tree/main/bundled/mods/arsenal-mastery",
   "api": "1.14",
@@ -15,7 +15,6 @@
     ]
   },
   "hooks": [
-    "rac1.combat.get_hit",
     "rac1.save.new_game",
     "rac1.save.new_game_plus"
   ],
