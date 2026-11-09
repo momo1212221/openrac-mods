@@ -1,0 +1,46 @@
+# Publish Arsenal Mastery when a new version reaches master.
+#
+# A GITHUB_TOKEN-created tag does not start another workflow by itself, so after creating the
+# lightweight tag this workflow explicitly dispatches build.yml at that tag. build.yml then builds
+# every supported platform and its existing release job publishes only Arsenal Mastery because the
+# tag is arsenal-mastery-v<version>.
+name: release-arsenal-mastery
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "arsenal-mastery/**"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  tag-and-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Tag the manifest version and build the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          version="$(python3 -c 'import json; print(json.load(open("arsenal-mastery/openrac-mod.json"))["version"])')"
+          tag="arsenal-mastery-v$version"
+          sha="$GITHUB_SHA"
+
+          if gh api "repos/$GH_REPO/git/ref/tags/$tag" >/dev/null 2>&1; then
+            echo "$tag already exists; nothing to publish."
+            exit 0
+          fi
+
+          gh api -X POST "repos/$GH_REPO/git/refs" -f ref="refs/tags/$tag" -f sha="$sha"
+          gh workflow run build.yml --ref "$tag"
+          echo "Dispatched build.yml for $tag at $sha"
