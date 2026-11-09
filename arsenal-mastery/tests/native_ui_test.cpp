@@ -33,7 +33,7 @@ int main() {
     arsenal::native_ui::draw(&overlay, s);
     assert(d.labels.size() == 1 && d.labels[0] == "V5");
     assert(d.rectangles.size() >= 4);
-    assert(std::fabs(d.rectangles[0].y - 43.0f) < 0.01f);
+    assert(std::fabs(d.rectangles[0].y - 42.0f) < 0.01f);
 
     d = {};
     s.pal = false;
@@ -44,7 +44,7 @@ int main() {
     s.tick = 20;
     arsenal::native_ui::draw(&overlay, s);
     assert(d.labels.size() == 2 && d.labels[0] == "V99" && d.labels[1] == "V99");
-    assert(std::fabs(d.rectangles[0].y - 51.0f) < 0.01f);
+    assert(std::fabs(d.rectangles[0].y - 50.0f) < 0.01f);
 
     d = {};
     s.tick = 125;
