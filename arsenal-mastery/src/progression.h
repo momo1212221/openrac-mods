@@ -3,6 +3,7 @@
 
 #include <array>
 #include <algorithm>
+#include <cstddef>
 
 namespace arsenal_mastery {
 
