@@ -32,7 +32,7 @@ using arsenal::Settings;
 using arsenal::WeaponDef;
 using openrac::gaddr;
 
-constexpr const char* kModVersion = "0.4.4";
+constexpr const char* kModVersion = "0.4.5";
 constexpr std::uint64_t kFlushTicks = 60;
 constexpr std::uint64_t kVictimLifetimeTicks = 1800;
 constexpr double kHardFactor = 1.3;
@@ -208,6 +208,7 @@ double sNanoMax = 10.0;
 int sNanoLastOrbs = -1;
 int sLastNanoLevel = 1;
 bool sHudVisible = false;
+bool sRuntimeAnnounced = false;
 int sUiPageIndex = 0;
 
 const auto& weapons() { return arsenal::weapon_defs(); }
@@ -225,6 +226,22 @@ void put(gaddr at, T value) {
 gaddr exe(std::uint32_t address) { return sMod->relocate(address); }
 gaddr level0(std::uint32_t address) { return sMod->relocate_level(0, address); }
 gaddr hero() { return exe(sDisc->hero); }
+
+int current_item() {
+    openrac_pose pose{};
+    if (sMod != nullptr && sMod->hero_pose(pose) && pose.item >= 0) {
+        return pose.item;
+    }
+    return get<std::int32_t>(exe(sDisc->item_in_hand));
+}
+
+int current_health(int max_orbs) {
+    openrac_pose pose{};
+    if (sMod != nullptr && sMod->hero_pose(pose) && pose.health >= 0) {
+        return std::clamp(pose.health, 0, max_orbs);
+    }
+    return std::clamp(get<std::int32_t>(exe(sDisc->hero_health)), 0, max_orbs);
+}
 
 void reset_runtime_state() {
     sSeen.fill(SeenHit{});
@@ -352,7 +369,7 @@ int weapon_from_attacker(std::uint32_t attacker) {
             const int by_class = weapon_from_class(get<std::int16_t>(held + kMobyClass), kHeldWeapons);
             if (by_class >= 0) return by_class;
         }
-        return arsenal::weapon_from_item(get<std::int32_t>(exe(sDisc->item_in_hand)));
+        return arsenal::weapon_from_item(current_item());
     }
 
     // Class 121 is normally a Bomb Glove bomb, but Visibomb's split projectiles reuse it and keep
@@ -548,7 +565,7 @@ void sync_nanotech() {
     }
 
     const int max_orbs = std::clamp(get<std::int32_t>(exe(sDisc->max_health)), 1, 16);
-    const int health = std::clamp(get<std::int32_t>(exe(sDisc->hero_health)), 0, max_orbs);
+    const int health = current_health(max_orbs);
     const double wanted_max = static_cast<double>(sNanotech.max_points(sProgression.new_game_plus(), max_orbs));
 
     if (sNanoPool < 0.0 || sNanoLastOrbs < 0) {
@@ -887,7 +904,7 @@ void update_hud() {
     }
 
     std::vector<openrac_hud_text> lines;
-    const int held = arsenal::weapon_from_item(get<std::int32_t>(exe(sDisc->item_in_hand)));
+    const int held = arsenal::weapon_from_item(current_item());
     if (held >= 0) {
         const int pct = static_cast<int>(std::lround(sProgression.progress(held) * 100.0));
         lines.push_back(hud_line(
@@ -903,6 +920,9 @@ void update_hud() {
                 + std::to_string(static_cast<int>(std::lround(sNanoMax))) + "  EXP " + std::to_string(pct) + "%",
             0.082f, 0.55f, 135, 155, 225
         ));
+    }
+    if (lines.empty()) {
+        lines.push_back(hud_line("Arsenal Mastery 0.4.5 active", 0.055f, 0.55f, 145, 165, 235));
     }
     sMod->hud_text_set(lines);
     sHudVisible = !lines.empty();
@@ -924,6 +944,11 @@ void on_frame() {
     sync_nanotech();
     apply_all_ammo_caps();
     clean_victim_cache();
+    if (!sRuntimeAnnounced && sMod->loaded_level() >= 0) {
+        sRuntimeAnnounced = true;
+        sMod->info("Arsenal Mastery 0.4.5 runtime active");
+        if (sMod->has_notice()) sMod->play_notice("Arsenal Mastery 0.4.5 active");
+    }
     update_hud();
     if (sSaveSlot >= 0 && sDirty && sTick >= sLastFlushTick + kFlushTicks) save_progress(sSaveSlot);
 }
@@ -988,6 +1013,7 @@ void load(openrac::Mod& mod) {
     sDirty = false;
     sTick = 0;
     sLastFlushTick = 0;
+    sRuntimeAnnounced = false;
     sNanotech.reset();
     reset_runtime_state();
 
@@ -1033,4 +1059,4 @@ void load(openrac::Mod& mod) {
 
 }  // namespace
 
-OPENRAC_MOD_CPP("arsenal-mastery", "0.4.4", load)
+OPENRAC_MOD_CPP("arsenal-mastery", "0.4.5", load)

@@ -124,7 +124,14 @@ jobs:
         run: cmake --build build --parallel
       - name: Test
         if: ${{ !matrix.skip_tests }}
-        run: ctest --test-dir build --output-on-failure --no-tests=ignore
+        run: |
+          # A single-mod release tag must not be held hostage by an unrelated mod's flaky runtime
+          # tests. Pull requests and branch builds still run the complete repository suite.
+          if [[ "$GITHUB_REF" == refs/tags/arsenal-mastery-v* ]]; then
+            ctest --test-dir build --output-on-failure --no-tests=ignore -R '^arsenal_mastery_'
+          else
+            ctest --test-dir build --output-on-failure --no-tests=ignore
+          fi
       - name: Package
         run: |
           # Each mod's folder as openrac_add_mod laid it out, checked and zipped for this platform.

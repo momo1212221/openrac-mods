@@ -1,16 +1,20 @@
 # Arsenal Mastery for OpenRAC
 
-OpenRAC port of **Arsenal Mastery** from RAC-RS.\n\n- **Original developer / design:** AsobiCodes\n- **OpenRAC port:** Moritz Wallinger (`momo1212221`)
+OpenRAC port of **Arsenal Mastery** from RAC-RS.
+
+- **Original developer / design:** AsobiCodes\n- **OpenRAC port:** Moritz Wallinger (`momo1212221`)
 
 ## Install in OpenRAC Launcher
 
 In **Mods → Add a mod**, paste this repository/release link:
 
-`https://github.com/momo1212221/openrac-mods/releases/tag/arsenal-mastery-v0.4.4`
+`https://github.com/momo1212221/openrac-mods/releases/tag/arsenal-mastery-v0.4.5`
 
 OpenRAC chooses the archive for the current platform and verifies it against `SHA256SUMS`.
 
-## 0.4.4 status
+## 0.4.5 status
+
+0.4.5 keeps 0.4.4's pause-menu-slot fallback and adds a visible first-gameplay runtime notice, an always-visible XP-HUD fallback line, and OpenRAC `hero_pose()` as the preferred source for the held item and current health.
 
 Implemented:
 
