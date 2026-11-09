@@ -35,7 +35,7 @@ using arsenal::Settings;
 using arsenal::WeaponDef;
 using openrac::gaddr;
 
-constexpr const char* kModVersion = "0.4.6";
+constexpr const char* kModVersion = "0.4.7";
 constexpr std::uint64_t kFlushTicks = 60;
 constexpr std::uint64_t kVictimLifetimeTicks = 1800;
 constexpr double kHardFactor = 1.3;
@@ -857,13 +857,14 @@ void sync_challenge_mode() {
 openrac::UiContent weapon_list_content() {
     openrac::UiContent content;
     content.title = sUiPageIndex == 0 ? "Weapons 1/2" : "Weapons 2/2";
+    const bool in_game = sMod != nullptr && sMod->loaded_level() >= 0;
     for (int row = 0; row < arsenal::ui::kWeaponsPerPage; ++row) {
         const int i = arsenal::ui::weapon_for_row(sUiPageIndex, row);
         const std::string label = std::string(weapons()[static_cast<std::size_t>(i)].display_name)
                                   + "   V" + std::to_string(sProgression.level(i));
-        content.items.push_back(openrac::UiItem::button(label, sSaveSlot >= 0));
+        content.items.push_back(openrac::UiItem::button(label, in_game));
     }
-    content.items.push_back(openrac::UiItem::button("Nanotech", sSaveSlot >= 0 && sNanotechEnabled));
+    content.items.push_back(openrac::UiItem::button("Nanotech", in_game && sNanotechEnabled));
     content.items.push_back(openrac::UiItem::button(
         sUiPageIndex == 0 ? "More Weapons" : "Previous Weapons"
     ));
@@ -935,13 +936,13 @@ void weapon_detail_event(const openrac::UiPage& page, const openrac::UiEvent& ev
 void progress_page_event(const openrac::UiPage& page, const openrac::UiEvent& event) {
     if (event.is(OPENRAC_UI_CHOOSE)) {
         const int weapon = arsenal::ui::weapon_for_row(sUiPageIndex, event.item());
-        if (weapon >= 0 && sSaveSlot >= 0) {
+        if (weapon >= 0 && sMod->loaded_level() >= 0) {
             sSelectedWeapon = weapon;
             sWeaponDetails.set(weapon_detail_content());
             sWeaponDetails.open();
             return;
         }
-        if (event.item() == arsenal::ui::kNanotechRow && sSaveSlot >= 0 && sNanotechEnabled) {
+        if (event.item() == arsenal::ui::kNanotechRow && sMod->loaded_level() >= 0 && sNanotechEnabled) {
             sSelectedWeapon = -1;
             sWeaponDetails.set(weapon_detail_content());
             sWeaponDetails.open();
@@ -1114,8 +1115,8 @@ void on_frame() {
     if (!sRuntimeAnnounced && sMod->loaded_level() >= 0) {
         sRuntimeAnnounced = true;
         // Keep load diagnostics, but do not show a non-native mod banner in normal gameplay.
-        sMod->info("Arsenal Mastery 0.4.6 runtime active");
-        if (sTrace && sMod->has_notice()) sMod->play_notice("Arsenal Mastery 0.4.6 active");
+        sMod->info("Arsenal Mastery 0.4.7 runtime active");
+        if (sTrace && sMod->has_notice()) sMod->play_notice("Arsenal Mastery 0.4.7 active");
     }
     update_hud();
     if (sSaveSlot >= 0 && sDirty && sTick >= sLastFlushTick + kFlushTicks) save_progress(sSaveSlot);
@@ -1199,22 +1200,26 @@ void load(openrac::Mod& mod) {
     sOverlayEnabled = mod.has_overlay() && mod.on_overlay(draw_native_hud);
 
     if (mod.has_pause_items()) {
-        sWeaponDetails = mod.ui_page(weapon_detail_event);
-        const openrac::UiPage page = mod.ui_page(progress_page_event);
+        // Both the menu's shared slots AND its global page pool can be full.
+        // Neither failure is fatal for weapon XP, Nanotech or the native HUD.
         try {
-            mod.ui_pause_item("Weapons", page);
-        } catch (const openrac::Error& error) {
-            // The pause menu has two shared mod slots. Enhanced Audio + Multiplayer can fill both.
-            // A full menu must not prevent Arsenal Mastery's gameplay hooks, HUD and progression
-            // from loading. Prefer a title-menu fallback; if that is full too, continue HUD-only.
-            mod.warn(std::string("Pause menu entry unavailable; Arsenal Mastery continues: ") + error.what());
+            sWeaponDetails = mod.ui_page(weapon_detail_event);
+            const openrac::UiPage page = mod.ui_page(progress_page_event);
             try {
-                mod.ui_main_item(OPENRAC_UI_OPTIONS, "Weapons", page);
-                mod.warn("Arsenal Mastery page moved to the title menu because the pause-menu mod slots are full");
-            } catch (const openrac::Error& fallback_error) {
-                mod.warn(std::string("Title-menu fallback unavailable; Arsenal Mastery continues HUD-only: ")
-                         + fallback_error.what());
+                mod.ui_pause_item("Weapons", page);
+            } catch (const openrac::Error& error) {
+                mod.warn(std::string("In-game Weapons entry unavailable: ") + error.what());
+                try {
+                    mod.ui_main_item(OPENRAC_UI_OPTIONS, "Weapons", page);
+                    mod.info("Weapons page available from the title menu");
+                } catch (const openrac::Error& fallback_error) {
+                    mod.warn(std::string("Title-menu entry unavailable; gameplay and HUD still work: ")
+                             + fallback_error.what());
+                }
             }
+        } catch (const openrac::Error& error) {
+            mod.warn(std::string("Native Weapons pages unavailable; gameplay and HUD still work: ")
+                     + error.what());
         }
     }
 
@@ -1229,4 +1234,4 @@ void load(openrac::Mod& mod) {
 
 }  // namespace
 
-OPENRAC_MOD_CPP("arsenal-mastery", "0.4.6", load)
+OPENRAC_MOD_CPP("arsenal-mastery", "0.4.7", load)

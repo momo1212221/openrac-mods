@@ -2,7 +2,7 @@
   "format": 2,
   "id": "arsenal-mastery",
   "name": "Arsenal Mastery",
-  "version": "0.4.6",
+  "version": "0.4.7",
   "author": "AsobiCodes — original developer · Moritz Wallinger — OpenRAC port",
   "description": "OpenRAC port of Arsenal Mastery: post-hit health-delta weapon XP with death-confirmed last-hit bonus, per-save V1-V99 progression, level power, enemy rebalance, Nanotech progression, ammo-capacity progression and survival kill refunds.",
   "license": "MIT",

@@ -9,13 +9,13 @@ OpenRAC port of **Arsenal Mastery** from RAC-RS.
 
 In **Mods → Add a mod**, paste this repository/release link:
 
-`https://github.com/momo1212221/openrac-mods/releases/tag/arsenal-mastery-v0.4.6`
+`https://github.com/momo1212221/openrac-mods/releases/tag/arsenal-mastery-v0.4.7`
 
 OpenRAC chooses the archive for the current platform and verifies it against `SHA256SUMS`.
 
-## 0.4.6 status
+## 0.4.7 status
 
-0.4.6 keeps the 0.4.5 gameplay and runtime hardening, including `hero_pose()` for the held item and current health. The first-gameplay log stays available for diagnostics; a visible mod notice appears only with Trace logging enabled.
+0.4.7 keeps the 0.4.5 gameplay and runtime hardening, including `hero_pose()` for the held item and current health. The first-gameplay log stays available for diagnostics; a visible mod notice appears only with Trace logging enabled.
 
 ### Native in-game UI
 
@@ -23,7 +23,8 @@ OpenRAC chooses the archive for the current platform and verifies it against `SH
 - The game's own menus show two pages of selectable weapons; select a weapon for level, XP, damage, ammo and kill details. Nanotech has its own native detail page.
 - On OpenRAC interface 1.14, the weapon HUD uses a compact amber framed level/XP gauge. The Nanotech gauge appears briefly after earning XP; weapon upgrades flash a short message.
 - On interface 1.12/1.13, the display uses OpenRAC's game-font HUD text instead of a separate overlay.
-- If the shared pause-menu slots are filled by other mods, it tries the title menu; if those slots are also full, gameplay and HUD still load.
+- If the shared pause-menu slots or native-page pool are full, the gameplay and HUD still load. When possible, the Weapons page falls back to the title menu.
+- The weapon detail menu is also available in a new game before a memory-card save slot has been created.
 
 Implemented:
 
