@@ -75,18 +75,10 @@ constexpr int kSaveSlots = 16;
 constexpr int kUnsavedSlot = kSaveSlots;
 constexpr int kProgressSlots = kSaveSlots + 1;
 
-struct SeenHit {
-    std::uint32_t hit = 0;
-    std::uint32_t victim = 0;
-    std::uint32_t attacker = 0;
-    float scaled_damage = 0;
-    std::uint64_t tick = 0;
-};
-
 openrac::Mod* sMod = nullptr;
 std::array<std::array<double, kWeapons.size()>, kProgressSlots> sXp{};
-std::array<SeenHit, 64> sSeen{};
 std::uint64_t sTick = 0;
+bool sReplayingScaledHit = false;
 std::uint64_t sSaveTick = 0;
 int sActiveSlot = kUnsavedSlot;
 bool sUnsavedSession = false;
@@ -138,12 +130,8 @@ int weapon_from_oclass(int oclass) {
     return -1;
 }
 
-int attacker_oclass(std::uint32_t attacker) {
-    if (sMod == nullptr || attacker == 0) {
-        return -1;
-    }
-    const int slot = sMod->moby_slot_of(attacker);
-    if (slot < 0) {
+int moby_oclass_from_slot(int slot) {
+    if (sMod == nullptr || slot < 0) {
         return -1;
     }
     for (const auto& moby : sMod->moby_list()) {
@@ -154,19 +142,24 @@ int attacker_oclass(std::uint32_t attacker) {
     return -1;
 }
 
-int weapon_from_attacker(std::uint32_t attacker) {
-    if (sMod == nullptr || attacker == 0) {
+int weapon_from_hit(const openrac_hit& hit) {
+    if (sMod == nullptr) {
         return -1;
     }
 
-    const int attacker_slot = sMod->moby_slot_of(attacker);
     const int hero_slot = sMod->figure_slot(-1);
-    if (attacker_slot >= 0 && attacker_slot == hero_slot) {
+    if (hit.attacker >= 0 && hit.attacker == hero_slot) {
         return current_weapon();
     }
 
-    const int mapped = weapon_from_oclass(attacker_oclass(attacker));
-    return mapped >= 0 ? mapped : -1;
+    if (hit.source_oclass > 0) {
+        const int mapped = weapon_from_oclass(hit.source_oclass);
+        if (mapped >= 0) {
+            return mapped;
+        }
+    }
+
+    return weapon_from_oclass(moby_oclass_from_slot(hit.attacker));
 }
 
 double& weapon_xp(int weapon) {
@@ -278,77 +271,47 @@ void update_progress_slot() {
     }
 }
 
-bool repeated_hit(std::uint32_t hit, std::uint32_t victim, std::uint32_t attacker, float damage) {
-    const std::size_t index = static_cast<std::size_t>(((hit >> 4u) ^ victim) % sSeen.size());
-    const SeenHit& seen = sSeen[index];
-    return seen.hit == hit && seen.victim == victim && seen.attacker == attacker
-           && std::fabs(seen.scaled_damage - damage) < 0.0001f && sTick <= seen.tick + 2;
-}
-
-void remember_hit(std::uint32_t hit, std::uint32_t victim, std::uint32_t attacker, float damage) {
-    const std::size_t index = static_cast<std::size_t>(((hit >> 4u) ^ victim) % sSeen.size());
-    sSeen[index] = {hit, victim, attacker, damage, sTick};
-}
-
-double rebalance_factor() {
-    if (!sEnemyRebalance || sMod == nullptr) {
-        return 1.0;
-    }
-    const int level = sMod->loaded_level();
-    double factor = 1.0;
-    if (level >= 0 && level < static_cast<int>(kRebalance.size())) {
-        factor = kRebalance[static_cast<std::size_t>(level)];
-    }
-    if (sHardRebalance) {
-        factor *= kHardFactor;
-    }
-    if (sNgPlus) {
-        factor *= kNgPlusFactor;
-    }
-    return factor;
-}
-
-template <class Original>
-std::uint32_t on_get_hit(Original original, std::uint32_t victim, std::int32_t mask, std::int32_t keep) {
-    const std::uint32_t hit = original(victim, mask, keep);
-    if (hit == 0 || sMod == nullptr) {
-        return hit;
+int on_moby_hit(void*, const openrac_hit* source) {
+    if (sMod == nullptr || source == nullptr || sReplayingScaledHit) {
+        return 0;
     }
 
-    // The old port depended on a fixed enemy-class whitelist and hard-coded hero globals. Current
-    // OpenRAC exposes stable moby/hero slots, so accept any non-hero world target and attribute only
-    // hits whose attacker can be traced to Ratchet or a known player projectile.
-    const int victim_slot = sMod->moby_slot_of(victim);
     const int hero_slot = sMod->figure_slot(-1);
-    if (victim_slot < 0 || victim_slot == hero_slot) {
-        return hit;
+    if (source->victim < 0 || source->victim == hero_slot || !(source->damage > 0)
+        || !std::isfinite(source->damage)) {
+        return 0;
     }
 
-    auto memory = sMod->memory();
-    const std::uint32_t attacker = memory.read<std::uint32_t>(hit + 0x20u);
-    const float raw_damage = memory.read<float>(hit + 0x2cu);
-    if (!(raw_damage > 0) || !std::isfinite(raw_damage)
-        || repeated_hit(hit, victim, attacker, raw_damage)) {
-        return hit;
-    }
-
-    const int weapon = weapon_from_attacker(attacker);
+    const int weapon = weapon_from_hit(*source);
     if (weapon < 0) {
-        return hit;
+        return 0;
     }
 
     const int before = weapon_level(weapon);
     const double power = sLevelPower ? kPower[static_cast<std::size_t>(before - 1)] : 1.0;
     const double balance = rebalance_factor();
     const double multiplier = power * sWeaponDamage / std::max(0.01, balance);
-    const float scaled = static_cast<float>(raw_damage * multiplier);
+    const float wanted_damage = static_cast<float>(source->damage * multiplier);
+    float applied_damage = source->damage;
+    bool replaced = false;
 
-    if (std::fabs(scaled - raw_damage) > 0.0001f) {
-        memory.write<float>(hit + 0x2cu, scaled);
+    if (std::fabs(wanted_damage - source->damage) > 0.0001f) {
+        openrac_hit replay = *source;
+        replay.size = sizeof replay;
+        replay.damage = wanted_damage;
+
+        // on_moby_hit also sees hits posted by mods. The guard lets the replay through unchanged
+        // and prevents recursion; the original retail hit is taken back only when the replacement
+        // was accepted by OpenRAC.
+        sReplayingScaledHit = true;
+        replaced = sMod->moby_hit(replay);
+        sReplayingScaledHit = false;
+        if (replaced) {
+            applied_damage = wanted_damage;
+        }
     }
-    remember_hit(hit, victim, attacker, scaled);
 
-    const double gain = static_cast<double>(scaled) * kXpPerDamage * sXpRate;
+    const double gain = static_cast<double>(applied_damage) * kXpPerDamage * sXpRate;
     weapon_xp(weapon) += gain;
     sDirty = true;
 
@@ -368,11 +331,13 @@ std::uint32_t on_get_hit(Original original, std::uint32_t victim, std::int32_t m
             std::string("hit ") + kWeapons[static_cast<std::size_t>(weapon)].name
             + " xp+" + std::to_string(static_cast<int>(std::lround(gain)))
             + " total=" + std::to_string(static_cast<int>(std::lround(weapon_xp(weapon))))
-            + " V" + std::to_string(after) + " damage=" + std::to_string(raw_damage) + "->"
-            + std::to_string(scaled) + " T=" + std::to_string(balance)
+            + " V" + std::to_string(after) + " damage=" + std::to_string(source->damage) + "->"
+            + std::to_string(applied_damage) + " T=" + std::to_string(balance)
+            + (replaced ? " replay=scaled" : " replay=original")
         );
     }
-    return hit;
+
+    return replaced ? 1 : 0;
 }
 
 template <class Original>
@@ -381,7 +346,6 @@ void on_new_game(Original original) {
     sActiveSlot = kUnsavedSlot;
     sUnsavedSession = true;
     sXp[static_cast<std::size_t>(kUnsavedSlot)].fill(0);
-    sSeen.fill({});
     sNgPlus = false;
     sLevelNoticeTicks = 0;
     if (sMod != nullptr) {
@@ -521,11 +485,9 @@ void load(openrac::Mod& mod) {
     }
     update_progress_slot();
 
-    mod.hook<openrac::rac1::Moby_GetHitMessage>(
-        [](auto original, std::uint32_t victim, std::int32_t mask, std::int32_t keep) {
-            return on_get_hit(original, victim, mask, keep);
-        }
-    );
+    // Use the stable hit watcher rather than taking Moby_GetHitMessage. This lets Arsenal
+    // Mastery coexist with Enhanced Weapons and other mods that own the retail hook point.
+    mod.on_moby_hit(on_moby_hit);
     mod.hook<openrac::rac1::Save_NewGame>([](auto original) { on_new_game(original); });
     mod.hook<openrac::rac1::Save_NewGamePlus>(
         [](auto original, std::int32_t slot) { on_new_game_plus(original, slot); }
