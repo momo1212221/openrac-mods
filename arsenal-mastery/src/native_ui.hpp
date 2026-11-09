@@ -77,7 +77,7 @@ inline void draw(const openrac_overlay* overlay, const Snapshot& s) {
     const auto& d = *overlay;
 
     // HUD below the game's own ammo panel. Never draw fake activation messages.
-    if (s.held_weapon >= 0 && s.has_ammo) {
+    if (s.held_weapon >= 0) {
         const float y = (s.pal ? 10.0f : 18.0f) + 32.0f + 2.0f;
         char version[8]{};
         std::snprintf(version, sizeof version, "V%d", std::clamp(s.level, 1, 99));
