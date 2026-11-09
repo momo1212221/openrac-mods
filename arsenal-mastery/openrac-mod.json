@@ -2,14 +2,17 @@
   "format": 2,
   "id": "arsenal-mastery",
   "name": "Arsenal Mastery",
-  "version": "0.1.0",
-  "author": "AsobiCodes",
-  "description": "Initial OpenRAC port of Arsenal Mastery: weapons earn XP from enemy damage, level from V1 to V5, gain level-based power, and can use the original planet-based enemy rebalance. This first native-port milestone deliberately excludes RAC-RS-only HUD, per-save storage, Gold/Mega, perks and Nanotech systems until equivalent OpenRAC APIs are available.",
+  "version": "0.2.0",
+  "author": "AsobiCodes / Moritz Wallinger",
+  "description": "OpenRAC Arsenal Mastery port with persistent per-save weapon XP, V1-V5 power progression, Enhanced RAC HUD, robust OpenRAC weapon attribution and enemy rebalance.",
   "license": "MIT",
   "homepage": "https://github.com/AsobiCodes/rac-rs/tree/main/bundled/mods/arsenal-mastery",
-  "api": "1.1",
+  "api": "1.14",
   "games": {
-    "rac1": ["pal", "ntsc"]
+    "rac1": [
+      "pal",
+      "ntsc"
+    ]
   },
   "hooks": [
     "rac1.combat.get_hit",
@@ -21,9 +24,9 @@
       "key": "xp_rate",
       "name": "XP rate",
       "type": "float",
-      "default": 1.0,
+      "default": 1,
       "min": 0.25,
-      "max": 4.0,
+      "max": 4,
       "step": 0.25,
       "description": "Multiplier for weapon XP earned from enemy damage."
     },
@@ -52,9 +55,9 @@
       "key": "weapon_damage",
       "name": "Weapon damage",
       "type": "float",
-      "default": 1.0,
+      "default": 1,
       "min": 0.25,
-      "max": 4.0,
+      "max": 4,
       "step": 0.25,
       "description": "Additional multiplier applied after weapon level power."
     },
@@ -64,6 +67,20 @@
       "type": "bool",
       "default": false,
       "description": "Log attributed hits, XP gains, levels and damage scaling for testing."
+    },
+    {
+      "key": "show_hud",
+      "name": "Weapon XP HUD",
+      "type": "bool",
+      "default": true,
+      "description": "Show the equipped weapon's V1-V5 level and persistent XP progress in the Enhanced RAC Style."
+    },
+    {
+      "key": "level_up_notice",
+      "name": "Level-up notice",
+      "type": "bool",
+      "default": true,
+      "description": "Show an Enhanced RAC Style banner when a weapon reaches the next Arsenal Mastery level."
     }
   ]
 }
