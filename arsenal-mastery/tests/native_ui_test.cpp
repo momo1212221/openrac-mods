@@ -56,6 +56,31 @@ int main() {
     arsenal::native_ui::draw(&overlay, s);
     assert(d.rectangles.empty() && d.labels.empty());
 
+    // Real pause grid: only owned weapons receive bars, plus the wrench header.
+    d = {};
+    s.menu_weapons = true;
+    s.menu_cells[0] = {2, true, 3, 0.5f};
+    s.menu_cells[1] = {7, false, 4, 0.25f};
+    s.wrench_level = 8;
+    s.wrench_progress = 0.75f;
+    arsenal::native_ui::draw(&overlay, s);
+    assert(d.labels.size() == 2);
+    assert(d.labels[0] == "V3" && d.labels[1] == "V8");
+    assert(d.rectangles.size() >= 8);
+    assert(std::fabs(d.rectangles[0].x - 29.8f) < 0.02f);
+    assert(std::fabs(d.rectangles[0].y - 129.3f) < 0.02f);
+
+    // No permanent XP text / popups when the menu is gone or the option is disabled.
+    d = {};
+    s.menu_weapons = false;
+    arsenal::native_ui::draw(&overlay, s);
+    assert(d.labels.empty() && d.rectangles.empty());
+    s.enabled = false;
+    s.playing = true;
+    d = {};
+    arsenal::native_ui::draw(&overlay, s);
+    assert(d.labels.empty() && d.rectangles.empty());
+
     assert(arsenal::native_ui::level_colour(5) == 0xFFC830FFu);
     assert(arsenal::native_ui::level_colour(99) == 0xFF9030FFu);
     return 0;
