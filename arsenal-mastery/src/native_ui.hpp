@@ -14,7 +14,7 @@
 namespace arsenal::native_ui {
 
 // Coordinates are in OpenRAC's native 512 x 448 picture (API 1.14).
-// The overlay is only called during gameplay, never on the pause menu.
+// OpenRAC's standard 1.14 overlay is gameplay-only; the fork opt-in draws it in menus too.
 // All data is copied from the simulation thread before the renderer reads it.
 struct LevelUp {
     int weapon = -1;
