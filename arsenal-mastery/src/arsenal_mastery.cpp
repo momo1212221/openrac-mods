@@ -208,7 +208,16 @@ double sNanoMax = 10.0;
 int sNanoLastOrbs = -1;
 int sLastNanoLevel = 1;
 bool sHudVisible = false;
+bool sNativeHudOverlay = false;
 bool sRuntimeAnnounced = false;
+struct LevelPopup {
+    int weapon = -1;
+    int level = 1;
+    std::uint64_t started = 0;
+};
+std::vector<LevelPopup> sLevelPopups;
+int sOverlayWeapon = -1;
+std::uint64_t sOverlayWeaponChanged = 0;
 int sUiPageIndex = 0;
 
 const auto& weapons() { return arsenal::weapon_defs(); }
@@ -244,6 +253,9 @@ int current_health(int max_orbs) {
 }
 
 void reset_runtime_state() {
+    sLevelPopups.clear();
+    sOverlayWeapon = -1;
+    sOverlayWeaponChanged = sTick;
     sSeen.fill(SeenHit{});
     sVictims.clear();
     sPendingScores.clear();
@@ -613,7 +625,12 @@ void show_level_notice(int weapon, int before, int after) {
     const std::string text = std::string(weapons()[static_cast<std::size_t>(weapon)].display_name)
                              + " reached V" + std::to_string(after);
     sMod->info(text);
-    if (sMod->has_notice()) sMod->play_notice(text);
+    // A short, transparent level-up panel is rendered alongside the native XP HUD.
+    // Never use play_notice() here: the port's notice remains until explicitly cleared.
+    if (sNativeHudOverlay && sXpDisplay) {
+        if (sLevelPopups.size() >= 3) sLevelPopups.erase(sLevelPopups.begin());
+        sLevelPopups.push_back({weapon, after, sTick});
+    }
 }
 
 void award_resolved_score(
@@ -880,6 +897,93 @@ void progress_page_event(const openrac::UiPage& page, const openrac::UiEvent& ev
     }
 }
 
+// The original RAC-RS Arsenal Mastery draws this bar below the game's ammo box.
+// Keep its 512x448 coordinates and V-level palette instead of placing generic mod text
+// over the centre of the screen. OpenRAC's on_overlay callback is available in API 1.14.
+constexpr std::array<std::uint32_t, 8> kNativeXpColors = {{
+    0x8FA0D8FFu, 0x5CD66CFFu, 0x4CC3F0FFu, 0xC070F0FFu,
+    0xFFC830FFu, 0xFF5CD8FFu, 0x40E8FFFFu, 0xFFFFFFFFu,
+}};
+
+std::uint32_t native_xp_color(int level) {
+    if (level > static_cast<int>(kNativeXpColors.size())) return 0xFF9030FFu;
+    return kNativeXpColors[static_cast<std::size_t>(
+        std::clamp(level, 1, static_cast<int>(kNativeXpColors.size())) - 1
+    )];
+}
+
+std::uint32_t with_native_alpha(std::uint32_t rgba, float alpha) {
+    const unsigned a = static_cast<unsigned>(std::lround(
+        std::clamp(alpha, 0.0f, 1.0f) * static_cast<float>(rgba & 0xffu)
+    ));
+    return (rgba & 0xffffff00u) | a;
+}
+
+void draw_native_weapon_xp(void*, const openrac_overlay* overlay) {
+    if (!overlay || !overlay->rect || !overlay->text || !sMod || !sDisc || !sXpDisplay
+        || sMod->loaded_level() < 0) return;
+
+    const int held = arsenal::weapon_from_item(current_item());
+    if (held != sOverlayWeapon) {
+        sOverlayWeapon = held;
+        sOverlayWeaponChanged = sTick;
+    }
+
+    // Original RAC-RS bar is anchored below the game's own ammunition box.
+    if (held >= 0 && held < static_cast<int>(weapons().size())) {
+        const auto& def = weapons()[static_cast<std::size_t>(held)];
+        if (def.has_ammo) {
+            const float ticks_per_sec = sDisc->version[0] == 'n' ? 60.0f : 50.0f;
+            const float fade = std::clamp(
+                static_cast<float>(sTick - sOverlayWeaponChanged) / (ticks_per_sec * 0.18f),
+                0.0f, 1.0f
+            );
+            const float top = sDisc->version[0] == 'n' ? 18.0f : 10.0f;
+            const float y = top + 33.0f;
+            const float x = 12.0f;
+            const float bar_x = x + 24.0f;
+            const float width = (current_ammo_cap(held) >= 100 ? 95.0f : 70.0f) + 20.0f;
+            const float progress = static_cast<float>(
+                std::clamp(sProgression.progress(held), 0.0, 1.0)
+            );
+            const int level = sProgression.level(held);
+            const std::uint32_t color = native_xp_color(level);
+
+            overlay->rect(overlay->context, bar_x, y, width, 4.0f,
+                          with_native_alpha(0x1C2438C8u, fade));
+            if (progress > 0.0f) {
+                overlay->rect(overlay->context, bar_x, y, width * progress, 4.0f,
+                              with_native_alpha(color, fade));
+            }
+            const std::string label = "V" + std::to_string(level);
+            overlay->text(overlay->context, x, y - 3.0f, 9.0f,
+                          with_native_alpha(color, fade), label.c_str());
+        }
+    }
+
+    // Small centred level-up card, based on bars.luau, automatically removed after 2 seconds.
+    const float tps = sDisc->version[0] == 'n' ? 60.0f : 50.0f;
+    const float lifespan = tps * 2.0f;
+    const float fade_ticks = tps * 0.4f;
+    int visible = 0;
+    for (const LevelPopup& popup : sLevelPopups) {
+        if (visible >= 3) break;
+        const float age = static_cast<float>(sTick - popup.started);
+        if (age >= lifespan) continue;
+        const float alpha = std::clamp(std::min(age / fade_ticks,
+                                               (lifespan - age) / fade_ticks), 0.0f, 1.0f);
+        if (alpha <= 0.0f) continue;
+        const float y = 50.0f + 34.0f * static_cast<float>(visible++);
+        overlay->rect(overlay->context, 212.0f, y, 88.0f, 34.0f,
+                      with_native_alpha(0x00000099u, alpha));
+        const std::string level = "V" + std::to_string(popup.level);
+        overlay->text(overlay->context, 254.0f, y + 7.0f, 17.0f,
+                      with_native_alpha(native_xp_color(popup.level), alpha), level.c_str());
+        // Weapon icons require a separate port draw API. Display only a V badge here,
+        // never an invented icon, and leave the weapon level data untouched.
+    }
+}
+
 openrac_hud_text hud_line(const std::string& text, float y, float scale, std::uint8_t r, std::uint8_t g, std::uint8_t b) {
     openrac_hud_text line{};
     std::snprintf(line.text, sizeof line.text, "%s", text.c_str());
@@ -895,6 +999,12 @@ openrac_hud_text hud_line(const std::string& text, float y, float scale, std::ui
 }
 
 void update_hud() {
+    // Do not draw the legacy centred text overlay alongside the game-style XP bar.
+    if (sNativeHudOverlay) {
+        if (sHudVisible && sMod->has_api_12()) sMod->hud_text_set({});
+        sHudVisible = false;
+        return;
+    }
     if (!sXpDisplay || !sMod->has_api_12() || sMod->loaded_level() < 0) {
         if (sHudVisible && sMod->has_api_12()) {
             sMod->hud_text_set({});
@@ -921,9 +1031,7 @@ void update_hud() {
             0.082f, 0.55f, 135, 155, 225
         ));
     }
-    if (lines.empty()) {
-        lines.push_back(hud_line("Arsenal Mastery 0.4.5 active", 0.055f, 0.55f, 145, 165, 235));
-    }
+
     sMod->hud_text_set(lines);
     sHudVisible = !lines.empty();
 }
@@ -938,6 +1046,14 @@ void clean_victim_cache() {
 
 void on_frame() {
     ++sTick;
+    const std::uint64_t popup_lifetime = sDisc && sDisc->version[0] == 'n' ? 120 : 100;
+    sLevelPopups.erase(
+        std::remove_if(sLevelPopups.begin(), sLevelPopups.end(),
+                       [popup_lifetime](const LevelPopup& popup) {
+                           return sTick >= popup.started + popup_lifetime;
+                       }),
+        sLevelPopups.end()
+    );
     finalize_all_pending();
     sync_save_slot();
     sync_challenge_mode();
@@ -947,7 +1063,7 @@ void on_frame() {
     if (!sRuntimeAnnounced && sMod->loaded_level() >= 0) {
         sRuntimeAnnounced = true;
         sMod->info("Arsenal Mastery 0.4.5 runtime active");
-        if (sMod->has_notice()) sMod->play_notice("Arsenal Mastery 0.4.5 active");
+        // Runtime verification stays in the log; a permanent top-screen notice looks like a mod.
     }
     update_hud();
     if (sSaveSlot >= 0 && sDirty && sTick >= sLastFlushTick + kFlushTicks) save_progress(sSaveSlot);
@@ -1014,6 +1130,10 @@ void load(openrac::Mod& mod) {
     sTick = 0;
     sLastFlushTick = 0;
     sRuntimeAnnounced = false;
+    sNativeHudOverlay = false;
+    sLevelPopups.clear();
+    sOverlayWeapon = -1;
+    sOverlayWeaponChanged = 0;
     sNanotech.reset();
     reset_runtime_state();
 
@@ -1028,6 +1148,10 @@ void load(openrac::Mod& mod) {
     mod.hook<NewGame>([](auto original) { on_new_game(original); });
     mod.hook<NewGamePlus>([](auto original, std::int32_t slot) { on_new_game_plus(original, slot); });
     mod.on_frame(on_frame);
+
+    // API 1.14 paints in the game's 2D coordinate space on all desktop renderers.
+    // Older ports keep the existing native-font text HUD as a compatibility fallback.
+    if (mod.has_overlay()) sNativeHudOverlay = mod.on_overlay(draw_native_weapon_xp);
 
     if (mod.has_pause_items()) {
         const openrac::UiPage page = mod.ui_page(progress_page_event);
