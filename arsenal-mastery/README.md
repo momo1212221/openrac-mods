@@ -1,5 +1,25 @@
 # Arsenal Mastery for OpenRAC
 
+## Experimental native game HUD (private development branch)
+
+This branch keeps the 0.4.7 gameplay, per-save progression and existing Weapons page intact.
+It replaces the large centered overlay and its permanent labels with a small V1-V99
+gauge under the native ammo panel. XP fill is eased, level colors track the original
+RAC-RS design, and short V-level popups fade out without using `play_notice`.
+The overlay is drawn only while playing using OpenRAC 1.14's `on_overlay`.
+
+**Not yet implemented:** XP bars on the **existing game's weapon icons**.
+OpenRAC 1.14 explicitly suppresses mod overlays while game menus are open. The
+existing mod-provided Weapons page is not equivalent to altering the native item grid.
+A host-level menu drawing callback or carefully validated dedicated hook is needed,
+and must be tested for both PAL/NTSC before claiming parity.
+
+`tests/native_ui_test.cpp` checks draw coordinates, color, popup expiry and
+menu suppression. It is registered with CTest; live gameplay and CI builds
+are not yet verified on this branch. The changes remain on the feature branch;
+no release tag or PR was created.
+
+
 OpenRAC port of **Arsenal Mastery** from RAC-RS.
 
 - **Original developer / design:** AsobiCodes
