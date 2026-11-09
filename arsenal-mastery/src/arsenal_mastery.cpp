@@ -55,13 +55,22 @@ struct Disc {
     std::uint32_t hit_ring;
     std::uint32_t challenge;
     std::uint32_t gold_flags;
+    std::uint32_t item_owned;
 };
 
 constexpr Disc kDiscs[] = {
     {"pal", 0x0013F450u, 0x001416F8u, 0x0015EEA0u, 0x0013D530u, 0x00140508u,
-     0x001404E0u, 0x001C43B0u, 0x00178200u, 0x0015EF20u, 0x0013E620u},
+     0x001404E0u, 0x001C43B0u, 0x00178200u, 0x0015EF20u, 0x0013E620u, 0x0013D5C8u},
     {"ntsc", 0x0013F350u, 0x001415F8u, 0x0015EDA0u, 0x0013D428u, 0x00140408u,
-     0x001403E0u, 0x001C40B0u, 0x00178100u, 0x0015EE20u, 0x0013E520u},
+     0x001403E0u, 0x001C40B0u, 0x00178100u, 0x0015EE20u, 0x0013E520u, 0x0013D4C0u},
+};
+
+// Native weapons grid draw, exposed on PAL and NTSC by OpenRAC's RAC1 bindings.
+struct DrawWeaponGrid {
+    static constexpr const char* id = "rac1.menu.item_grid.draw";
+    static constexpr const char* name = "Menu_ItemGrid_Draw";
+    static constexpr const char* signature = "i32(u32)";
+    using fn = std::int32_t (*)(std::uint32_t);
 };
 
 struct GetHit {
@@ -218,6 +227,14 @@ int sUiPageIndex = 0;
 int sSelectedWeapon = 0;
 openrac::UiPage sWeaponDetails;
 bool sOverlayEnabled = false;
+// Grid item order is the original five-column weapons page from bars.luau.
+constexpr std::array<int, 15> kOriginalGridItemIds{{
+    10, 16, 15, 20, 17,
+    14, 9, 11, 18, 13,
+    25, 24, 19, 21, 23
+}};
+std::array<arsenal::native_ui::MenuCell, 15> sCapturedGrid{};
+bool sSawOriginalGrid = false;
 std::mutex sNativeUiMutex;
 arsenal::native_ui::Snapshot sNativeUi;
 std::array<arsenal::native_ui::LevelUp, 3> sUiEvents{};
@@ -259,6 +276,34 @@ int current_item() {
     return get<std::int32_t>(exe(sDisc->item_in_hand));
 }
 
+// The hook captures only the game's own 5x3 weapons grid. The frame renderer
+// must not read game memory; on_frame will publish this capture as a value snapshot.
+// Item-grid cells are 0x0A bytes, with kind at +4 and item id at +6.
+template <class Original>
+std::int32_t on_draw_weapon_grid(Original original, std::uint32_t grid) {
+    const auto result = original(grid);
+    if (grid == 0 || !sXpDisplay) return result;
+    const int rows = get<std::int32_t>(grid + 0x40u);
+    const int cols = get<std::int32_t>(grid + 0x44u);
+    if (rows != 3 || cols != 5) return result;
+    const std::uint32_t cells = get<std::uint32_t>(grid + 0x48u);
+    if (cells < 0x100000u || cells >= 0x2000000u) return result;
+    std::array<arsenal::native_ui::MenuCell, 15> captured{};
+    for (std::size_t i = 0; i < captured.size(); ++i) {
+        const auto at = cells + static_cast<std::uint32_t>(i) * 0x0Au;
+        if (get<std::int16_t>(at + 4u) != 0) return result;
+        const int item = get<std::int16_t>(at + 6u);
+        if (item != kOriginalGridItemIds[i]) return result;
+        captured[i].weapon = arsenal::weapon_from_item(item);
+        if (captured[i].weapon < 0) return result;
+        captured[i].owned = get<std::uint8_t>(exe(sDisc->item_owned)
+                          + static_cast<std::uint32_t>(item)) != 0;
+    }
+    sCapturedGrid = captured;
+    sSawOriginalGrid = true;
+    return result;
+}
+
 int current_health(int max_orbs) {
     openrac_pose pose{};
     if (sMod != nullptr && sMod->hero_pose(pose) && pose.health >= 0) {
@@ -268,6 +313,8 @@ int current_health(int max_orbs) {
 }
 
 void reset_runtime_state() {
+    sSawOriginalGrid = false;
+    sCapturedGrid = {};
     sUiEventCount = 0;
     sUiHeld = -1;
     sUiSmooth = 0.0f;
@@ -988,7 +1035,19 @@ void update_hud() {
     snapshot.pal = sDisc != nullptr && std::string(sDisc->version) == "pal";
     snapshot.tick = sTick;
     if (sMod->loaded_level() >= 0) {
-        snapshot.playing = sMod->play_status().phase == OPENRAC_PLAY_PLAYING;
+        const int phase = sMod->play_status().phase;
+        snapshot.playing = phase == OPENRAC_PLAY_PLAYING;
+        snapshot.menu_weapons = phase == OPENRAC_PLAY_MENU && sSawOriginalGrid;
+        if (snapshot.menu_weapons) {
+            snapshot.menu_cells = sCapturedGrid;
+            for (auto& cell : snapshot.menu_cells) {
+                if (cell.weapon < 0 || !cell.owned) continue;
+                cell.level = sProgression.level(cell.weapon);
+                cell.progress = static_cast<float>(sProgression.progress(cell.weapon));
+            }
+            snapshot.wrench_level = sProgression.level(0);
+            snapshot.wrench_progress = static_cast<float>(sProgression.progress(0));
+        }
         if (snapshot.playing) {
             const int held = arsenal::weapon_from_item(current_item());
             if (held >= 0) {
@@ -1010,6 +1069,7 @@ void update_hud() {
             }
         }
     }
+    sSawOriginalGrid = false; // Never reuse a menu capture after it closes.
     for (int i = 0; i < sUiEventCount; ++i) {
         const auto& event = sUiEvents[static_cast<std::size_t>(i)];
         if (sTick < event.tick + 120) {
@@ -1129,6 +1189,9 @@ void load(openrac::Mod& mod) {
     sNanotech.reset();
     reset_runtime_state();
 
+    mod.hook<DrawWeaponGrid>([](auto original, std::uint32_t grid) {
+        return on_draw_weapon_grid(original, grid);
+    });
     mod.hook<GetHit>([](auto original, std::uint32_t victim, std::int32_t mask, std::int32_t keep) {
         return on_get_hit(original, victim, mask, keep);
     });
