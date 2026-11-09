@@ -899,3 +899,125 @@ void update_hud() {
     }
     if (sNanotechEnabled && sNanoPool >= 0.0) {
         const int pct = static_cast<int>(std::lround(sNanotech.progress(sProgression.new_game_plus()) * 100.0));
+        lines.push_back(hud_line(
+            "Nanotech " + std::to_string(static_cast<int>(std::ceil(sNanoPool))) + "/"
+                + std::to_string(static_cast<int>(std::lround(sNanoMax))) + "  EXP " + std::to_string(pct) + "%",
+            0.082f, 0.55f, 135, 155, 225
+        ));
+    }
+    sMod->hud_text_set(lines);
+    sHudVisible = !lines.empty();
+}
+
+void clean_victim_cache() {
+    if (sVictims.size() < 128 && sTick % 300 != 0) return;
+    for (auto it = sVictims.begin(); it != sVictims.end();) {
+        if (sTick > it->second.tick + kVictimLifetimeTicks) it = sVictims.erase(it);
+        else ++it;
+    }
+}
+
+void on_frame() {
+    ++sTick;
+    finalize_all_pending();
+    sync_save_slot();
+    sync_challenge_mode();
+    sync_nanotech();
+    apply_all_ammo_caps();
+    clean_victim_cache();
+    update_hud();
+    if (sSaveSlot >= 0 && sDirty && sTick >= sLastFlushTick + kFlushTicks) save_progress(sSaveSlot);
+}
+
+int start_level_from_setting(const std::string& value) {
+    if (value == "off") return 0;
+    if (value.size() >= 2 && value[0] == 'v') {
+        try {
+            const int n = std::stoi(value.substr(1));
+            if (n >= 2 && n <= 8) return n;
+        } catch (...) {
+        }
+    }
+    return 0;
+}
+
+void read_settings(openrac::Mod& mod) {
+    Settings settings;
+    settings.xp_rate = std::max(0.0, mod.setting<double>("xp_rate"));
+    settings.level_power = mod.setting<bool>("level_power");
+    settings.gold_at_v5 = mod.setting<bool>("gold_at_v5");
+    settings.endless = mod.setting<std::string>("level_cap") == "endless";
+    settings.portable_mega = mod.setting<bool>("portable_mega");
+    settings.start_level = start_level_from_setting(mod.setting<std::string>("start_level"));
+    sProgression.set_settings(settings);
+
+    sRebalanceMode = mod.setting<std::string>("rebalance");
+    if (sRebalanceMode != "off" && sRebalanceMode != "standard" && sRebalanceMode != "hard") {
+        sRebalanceMode = "standard";
+    }
+    sAmmoMode = mod.setting<std::string>("ammo_mode");
+    if (sAmmoMode != "normal" && sAmmoMode != "survival") sAmmoMode = "normal";
+    sNanotechEnabled = mod.setting<bool>("nanotech");
+    sXpDisplay = mod.setting<bool>("xp_display");
+    sNanotechXpRate = std::max(0.0, mod.setting<double>("nanotech_xp_rate"));
+    sWeaponDamage = std::max(0.0, mod.setting<double>("weapon_damage"));
+    sEnemyDamage = std::max(0.0, mod.setting<double>("enemy_damage"));
+    sTrace = mod.setting<bool>("trace");
+}
+
+void find_disc(openrac::Mod& mod) {
+    if (mod.game() != "rac1") throw openrac::Error("arsenal-mastery is for Ratchet & Clank (rac1)");
+    sDisc = nullptr;
+    for (const auto& disc : kDiscs) {
+        if (mod.version() == disc.version) {
+            sDisc = &disc;
+            break;
+        }
+    }
+    if (sDisc == nullptr) {
+        throw openrac::Error("arsenal-mastery knows the PAL and NTSC-U discs, not " + std::string(mod.version()));
+    }
+}
+
+void load(openrac::Mod& mod) {
+    sMod = &mod;
+    find_disc(mod);
+    read_settings(mod);
+    sDataDir = mod.data_dir();
+    sSaveSlot = -1;
+    sFreshNewGame = false;
+    sDirty = false;
+    sTick = 0;
+    sLastFlushTick = 0;
+    sNanotech.reset();
+    reset_runtime_state();
+
+    mod.hook<GetHit>([](auto original, std::uint32_t victim, std::int32_t mask, std::int32_t keep) {
+        return on_get_hit(original, victim, mask, keep);
+    });
+    mod.hook<TakeDamage>([](auto original, std::int32_t amount) { on_take_damage(original, amount); });
+    mod.hook<RecordDeath>([](auto original, std::uint32_t moby, std::int32_t flags, std::int32_t index) {
+        on_record_death(original, moby, flags, index);
+    });
+    mod.hook<LoadGameplay>([](auto original, std::int32_t full) { return on_load_gameplay(original, full); });
+    mod.hook<NewGame>([](auto original) { on_new_game(original); });
+    mod.hook<NewGamePlus>([](auto original, std::int32_t slot) { on_new_game_plus(original, slot); });
+    mod.on_frame(on_frame);
+
+    if (mod.has_pause_items()) {
+        const openrac::UiPage page = mod.ui_page(progress_page_event);
+        mod.ui_pause_item("Arsenal Mastery", page);
+    }
+
+    mod.info(
+        std::string("Arsenal Mastery ") + kModVersion + " loaded on " + std::string(mod.version())
+        + "; per-save progression, V1-V99 core, Nanotech and ammo progression enabled"
+    );
+    if (sProgression.settings().portable_mega) {
+        mod.info("Portable Mega XP fallback enabled for weapons whose retail Mega case is not exposed by OpenRAC");
+    }
+}
+
+}  // namespace
+
+OPENRAC_MOD_CPP("arsenal-mastery", "0.4.3", load)
