@@ -2,9 +2,9 @@
   "format": 2,
   "id": "arsenal-mastery",
   "name": "Arsenal Mastery",
-  "version": "0.4.8",
+  "version": "0.4.9",
   "author": "AsobiCodes — original developer · Moritz Wallinger — OpenRAC port",
-  "description": "Native weapon-grid XP levels/bars, ammo-adjacent gameplay XP HUD and short level-up indicator; per-save V1-V99 progression, Nanotech, rebalancing and ammunition progression.",
+  "description": "Native ammo-aligned XP HUD beneath the existing counter, live grid XP indicators for owned weapons (1xN and larger), V1–V99 progression, Nanotech and per-save persistence.",
   "license": "MIT",
   "homepage": "https://github.com/AsobiCodes/rac-rs/tree/main/bundled/mods/arsenal-mastery",
   "api": "1.12",
@@ -122,7 +122,7 @@
       "name": "XP HUD",
       "type": "bool",
       "default": true,
-      "description": "Show native weapon XP bars in the original weapon grid and directly beneath the ammo HUD, with a short native level-up indicator."
+      "description": "Show a compact XP bar directly below the ammo number, plus V-level and progress under each owned weapon icon in the game's own weapon grid."
     },
     {
       "key": "start_level",
