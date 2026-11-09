@@ -1121,15 +1121,14 @@ std::int32_t on_weapon_grid_draw(Original original, std::uint32_t grid) {
     const gaddr cells = get<gaddr>(grid + 0x48);
     if (!cells) return result;
 
-    int weapon_count = 0, occupied_count = 0;
+    int weapon_count = 0;
     for (int i = 0; i < rows * cols; ++i) {
         const gaddr cell = cells + static_cast<gaddr>(i * 10);
         if (get<std::int16_t>(cell + 4) != 0) continue;
-        ++occupied_count;
         if (arsenal::weapon_from_item(get<std::int16_t>(cell + 6)) >= 0) ++weapon_count;
     }
-    // Exclude unrelated inventory grids without requiring a fixed weapon count.
-    if (!weapon_count || occupied_count != weapon_count) return result;
+    // Decorate actual weapons only; other cells may contain gadgets.
+    if (!weapon_count) return result;
 
     const gaddr menu_moby = get<gaddr>(grid + 0x14);
     if (!menu_moby) return result;
