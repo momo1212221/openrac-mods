@@ -719,3 +719,183 @@ std::uint32_t on_get_hit(Original original, std::uint32_t victim, std::int32_t m
         weapon,
         *health,
         start_health,
+        std::max(0.0, static_cast<double>(scaled)),
+        raw_damage,
+        scaled,
+        balance,
+        sTick,
+    };
+    return hit;
+}
+
+template <class Original>
+void on_record_death(Original original, std::uint32_t moby, std::int32_t flags, std::int32_t index) {
+    // RecordDeath is called while the dying moby still identifies the victim. Finalize before the
+    // original clears/saves its death state so the pending weapon hit can receive the kill bonus.
+    finalize_pending(moby, true);
+    original(moby, flags, index);
+}
+
+template <class Original>
+void on_take_damage(Original original, std::int32_t amount) {
+    if (amount <= 0) {
+        original(amount);
+        return;
+    }
+
+    if (sNanotechEnabled && sMod->loaded_level() >= 0) {
+        sync_nanotech();
+        if (sNanoPool < 0.0) {
+            original(amount);
+            return;
+        }
+
+        const int max_orbs = std::clamp(get<std::int32_t>(exe(sDisc->max_health)), 1, 16);
+        sNanoPool = std::max(0.0, sNanoPool - nanotech_damage_per_hit());
+        const int want = nanotech_orbs_for(sNanoPool, sNanoMax, max_orbs);
+        put<std::int32_t>(exe(sDisc->hero_health), std::min(want + 1, max_orbs));
+        original(1);
+        sNanoLastOrbs = want;
+        return;
+    }
+
+    sEnemyDamageCarry += std::max(0.0, sEnemyDamage);
+    int hits = static_cast<int>(std::floor(sEnemyDamageCarry));
+    sEnemyDamageCarry -= hits;
+    for (int i = 0; i < hits; ++i) original(1);
+
+    if (hits > 0 && sRebalanceMode == "hard") {
+        ++sHeroPaidHits;
+        if (sHeroPaidHits % 2 == 0) original(1);
+    }
+}
+
+
+template <class Original>
+std::uint32_t on_load_gameplay(Original original, std::int32_t full) {
+    const std::uint32_t cursor = original(full);
+    snapshot_retail_ammo_caps();
+    apply_all_ammo_caps(true);
+    sNanoPool = -1.0;
+    sNanoLastOrbs = -1;
+    return cursor;
+}
+
+template <class Original>
+void on_new_game(Original original) {
+    finalize_all_pending();
+    if (sSaveSlot >= 0 && sDirty) save_progress(sSaveSlot);
+    original();
+    sProgression.reset();
+    sNanotech.reset();
+    reset_runtime_state();
+    sSaveSlot = -1;
+    sFreshNewGame = true;
+    mark_dirty();
+    sMod->info("New Game: Arsenal Mastery progression reset");
+}
+
+template <class Original>
+void on_new_game_plus(Original original, std::int32_t slot) {
+    finalize_all_pending();
+    if (sSaveSlot >= 0 && sDirty) save_progress(sSaveSlot);
+    original(slot);
+    sProgression.set_new_game_plus(true);
+    reset_runtime_state();
+    mark_dirty();
+    sMod->info("New Game+: Arsenal Mastery progression preserved");
+}
+
+void sync_challenge_mode() {
+    const bool ng = get<std::int32_t>(exe(sDisc->challenge)) > 0;
+    if (ng != sProgression.new_game_plus()) {
+        sProgression.set_new_game_plus(ng);
+        sNanoPool = -1.0;
+        sNanoLastOrbs = -1;
+        mark_dirty();
+    }
+}
+
+std::string short_weapon_line(int weapon) {
+    const auto& def = weapons()[static_cast<std::size_t>(weapon)];
+    const auto& state = sProgression.state(weapon);
+    const int percent = static_cast<int>(std::lround(sProgression.progress(weapon) * 100.0));
+    std::ostringstream out;
+    out << def.display_name << "  V" << sProgression.level(weapon) << "  " << percent << "%  K" << state.kills;
+    return out.str();
+}
+
+openrac::UiContent progress_page_content() {
+    openrac::UiContent content;
+    content.title = sUiPageIndex == 0 ? "Arsenal Mastery 1/2" : "Arsenal Mastery 2/2";
+
+    if (sUiPageIndex == 0) {
+        std::ostringstream status;
+        status << "Save " << (sSaveSlot >= 0 ? std::to_string(sSaveSlot) : "-")
+               << (sProgression.new_game_plus() ? "  NG+" : "  New Game");
+        content.items.push_back(openrac::UiItem::text(status.str()));
+        if (sNanotechEnabled) {
+            std::ostringstream nano;
+            nano << "Nanotech N" << sNanotech.level(sProgression.new_game_plus())
+                 << "  " << static_cast<int>(std::lround(sNanotech.progress(sProgression.new_game_plus()) * 100.0)) << "%";
+            content.items.push_back(openrac::UiItem::text(nano.str()));
+        } else {
+            content.items.push_back(openrac::UiItem::text("Nanotech levels: Off"));
+        }
+        for (int i = 0; i < 8; ++i) content.items.push_back(openrac::UiItem::text(short_weapon_line(i)));
+        content.items.push_back(openrac::UiItem::button("Next page"));
+    } else {
+        for (int i = 8; i < static_cast<int>(weapons().size()); ++i) {
+            content.items.push_back(openrac::UiItem::text(short_weapon_line(i)));
+        }
+        content.items.push_back(openrac::UiItem::text("Portable Mega: XP fallback for case guns"));
+        content.items.push_back(openrac::UiItem::text("Gold case visuals/perks need more hooks"));
+        content.items.push_back(openrac::UiItem::button("Previous page"));
+    }
+    content.footer = {"Progress is stored per save slot."};
+    return content;
+}
+
+void progress_page_event(const openrac::UiPage& page, const openrac::UiEvent& event) {
+    if (event.is(OPENRAC_UI_SHOW)) sUiPageIndex = 0;
+    if (event.is(OPENRAC_UI_CHOOSE)) sUiPageIndex = sUiPageIndex == 0 ? 1 : 0;
+    if (event.is(OPENRAC_UI_SHOW) || event.is(OPENRAC_UI_FRAME) || event.is(OPENRAC_UI_CHOOSE)) {
+        page.set(progress_page_content());
+    }
+}
+
+openrac_hud_text hud_line(const std::string& text, float y, float scale, std::uint8_t r, std::uint8_t g, std::uint8_t b) {
+    openrac_hud_text line{};
+    std::snprintf(line.text, sizeof line.text, "%s", text.c_str());
+    line.x = 0.5f;
+    line.y = y;
+    line.scale = scale;
+    line.rgba[0] = r;
+    line.rgba[1] = g;
+    line.rgba[2] = b;
+    line.rgba[3] = 230;
+    line.flags = OPENRAC_HUD_SMALL | OPENRAC_HUD_SHADOW;
+    return line;
+}
+
+void update_hud() {
+    if (!sXpDisplay || !sMod->has_api_12() || sMod->loaded_level() < 0) {
+        if (sHudVisible && sMod->has_api_12()) {
+            sMod->hud_text_set({});
+            sHudVisible = false;
+        }
+        return;
+    }
+
+    std::vector<openrac_hud_text> lines;
+    const int held = arsenal::weapon_from_item(get<std::int32_t>(exe(sDisc->item_in_hand)));
+    if (held >= 0) {
+        const int pct = static_cast<int>(std::lround(sProgression.progress(held) * 100.0));
+        lines.push_back(hud_line(
+            std::string(weapons()[static_cast<std::size_t>(held)].display_name) + " V"
+                + std::to_string(sProgression.level(held)) + "  EXP " + std::to_string(pct) + "%",
+            0.055f, 0.60f, 150, 170, 245
+        ));
+    }
+    if (sNanotechEnabled && sNanoPool >= 0.0) {
+        const int pct = static_cast<int>(std::lround(sNanotech.progress(sProgression.new_game_plus()) * 100.0));
