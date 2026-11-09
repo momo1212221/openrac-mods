@@ -5,19 +5,36 @@
 
 int main() {
     using namespace arsenal::ui;
-    static_assert(weapon_cell(0, 0).weapon == 2);
-    static_assert(weapon_cell(1, 1).weapon == 1);
-    static_assert(weapon_cell(2, 4).weapon == 13);
-    static_assert(weapon_cell(-1, 0).weapon == -1);
-    static_assert(weapon_cell(3, 1).weapon == -1);
-    static_assert(kWeaponGrid.size() == 3);
-    for (int weapon = 0; weapon < 16; ++weapon) {
-        bool found = weapon == 0;  // Wrench belongs to the header.
-        for (int row = 0; row < 3; ++row)
-            for (int col = 0; col < 5; ++col)
-                if (weapon_cell(row, col).weapon == weapon) found = true;
-        assert(found);
-    }
+    // The original weapons page can be 1x1, 1x3, 3x5 or larger.
+    const auto single = menu_grid_geometry(1, 1, 0, 160, 96, 160.0f, 96.0f,
+                                            2.0f, 2.0f, 24.0f, 24.0f);
+    assert(single.valid);
+    assert(single.cell(0, 0).x == 68.0f);
+    assert(single.cell(0, 0).y == 36.0f);
+    const auto few = menu_grid_geometry(1, 3, 0, 160, 96, 160.0f, 96.0f,
+                                         8.0f, 4.0f, 24.0f, 24.0f);
+    assert(few.valid);
+    assert(few.cell(0, 0).x == 8.0f);
+    assert(few.cell(0, 1).x == 68.0f);
+    assert(few.cell(0, 2).x == 128.0f);
+    assert(few.cell(0, 2).y == few.cell(0, 0).y);
+    const auto many = menu_grid_geometry(3, 5, 0, 160, 96, 160.0f, 96.0f,
+                                          8.0f, 4.0f, 24.0f, 24.0f);
+    assert(many.valid);
+    assert(many.cell(2, 4).x == 128.0f);
+    assert(many.cell(0, 0).y == 4.0f);
+    assert(many.cell(2, 0).y == 68.0f);
+    const auto fixed_rows = menu_grid_geometry(2, 1, 2, 160, 96, 160.0f, 96.0f,
+                                                8.0f, 4.0f, 24.0f, 24.0f);
+    assert(fixed_rows.valid);
+    assert(fixed_rows.cell(1, 0).y > fixed_rows.cell(0, 0).y);
+    assert(!menu_grid_geometry(0, 5, 0, 160, 96, 160.0f, 96.0f,
+                               8.0f, 4.0f, 24.0f, 24.0f).valid);
+    assert(!menu_grid_geometry(50, 5, 0, 160, 96, 160.0f, 96.0f,
+                               8.0f, 4.0f, 24.0f, 24.0f).valid);
+    assert(native_grid_bar_width(23.0f) == 21);
+    assert(native_grid_bar_width(4.0f) == 8);
+    assert(native_grid_bar_width(100.0f) == 28);
     assert(level_color(1) == 0x8FA0D8FFu);
     assert(level_color(5) == 0xFFC830FFu);
     assert(level_color(8) == 0xFFFFFFFFu);
@@ -36,12 +53,12 @@ int main() {
     assert(with_alpha(0xFF00AA00u, 500) == 0xFF00AAFFu);
     assert(filled_width(28.0f, 50) == 14.0f);
     // RAC2-like ammo HUD alignment: x follows the original game slot.
-    assert(ammo_xp_x(42) == 47.0f);
-    assert(ammo_xp_x(92) == 97.0f);
-    assert(ammo_xp_y(false) == 43.0f);
-    assert(ammo_xp_y(true) == 51.0f);
-    assert(ammo_xp_width(40) == 68.0f);
-    assert(ammo_xp_width(100) == 90.0f);
+    assert(ammo_xp_x(42) == 127.0f);
+    assert(ammo_xp_x(92) == 177.0f);
+    assert(ammo_xp_y(false) == 55.0f);
+    assert(ammo_xp_y(true) == 63.0f);
+    assert(ammo_xp_width(40) == 42.0f);
+    assert(ammo_xp_width(100) == 48.0f);
     assert(kAmmoXpHeight == 4.0f);
     assert(kHudElementCount == 13);
     assert(kHudElementStride == 0x90);
