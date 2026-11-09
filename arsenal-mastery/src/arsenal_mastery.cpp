@@ -178,3 +178,183 @@ struct PendingScore {
 openrac::Mod* sMod = nullptr;
 const Disc* sDisc = nullptr;
 Progression sProgression;
+NanotechProgression sNanotech;
+std::array<SeenHit, kHitCount> sSeen{};
+std::unordered_map<std::uint32_t, VictimProgress> sVictims;
+std::unordered_map<std::uint32_t, PendingScore> sPendingScores;
+std::array<int, arsenal::kWeaponCount> sRetailAmmoCap{};
+std::array<int, arsenal::kWeaponCount> sAppliedAmmoLevel{};
+
+std::uint64_t sTick = 0;
+std::uint64_t sLastFlushTick = 0;
+int sSaveSlot = -1;
+bool sDirty = false;
+bool sFreshNewGame = false;
+std::string sDataDir;
+
+std::string sRebalanceMode = "standard";
+std::string sAmmoMode = "normal";
+double sWeaponDamage = 1.0;
+double sEnemyDamage = 1.0;
+double sNanotechXpRate = 1.0;
+bool sNanotechEnabled = true;
+bool sXpDisplay = true;
+bool sTrace = false;
+
+double sEnemyDamageCarry = 0.0;
+std::uint64_t sHeroPaidHits = 0;
+double sNanoPool = -1.0;
+double sNanoMax = 10.0;
+int sNanoLastOrbs = -1;
+int sLastNanoLevel = 1;
+bool sHudVisible = false;
+int sUiPageIndex = 0;
+
+const auto& weapons() { return arsenal::weapon_defs(); }
+
+template <class T>
+T get(gaddr at) {
+    return sMod->memory().read<T>(at);
+}
+
+template <class T>
+void put(gaddr at, T value) {
+    sMod->memory().write<T>(at, value);
+}
+
+gaddr exe(std::uint32_t address) { return sMod->relocate(address); }
+gaddr level0(std::uint32_t address) { return sMod->relocate_level(0, address); }
+gaddr hero() { return exe(sDisc->hero); }
+
+void reset_runtime_state() {
+    sSeen.fill(SeenHit{});
+    sVictims.clear();
+    sPendingScores.clear();
+    sRetailAmmoCap.fill(-1);
+    sAppliedAmmoLevel.fill(-1);
+    sEnemyDamageCarry = 0.0;
+    sHeroPaidHits = 0;
+    sNanoPool = -1.0;
+    sNanoMax = 10.0;
+    sNanoLastOrbs = -1;
+    sLastNanoLevel = sNanotech.level(sProgression.new_game_plus());
+}
+
+std::filesystem::path progress_path(int slot) {
+    return std::filesystem::path(sDataDir) / ("slot-" + std::to_string(slot) + ".txt");
+}
+
+void mark_dirty() { sDirty = true; }
+
+void save_progress(int slot) {
+    if (slot < 0 || sDataDir.empty()) return;
+
+    std::error_code ec;
+    std::filesystem::create_directories(sDataDir, ec);
+    const auto final_path = progress_path(slot);
+    const auto temp_path = final_path.string() + ".tmp";
+    std::ofstream out(temp_path, std::ios::trunc);
+    if (!out) {
+        sMod->warn("Arsenal Mastery: cannot write progression for slot " + std::to_string(slot));
+        return;
+    }
+
+    const bool wrote = arsenal::write_progress(out, sProgression, sNanotech);
+    out.close();
+    if (!wrote || !out) {
+        std::filesystem::remove(temp_path, ec);
+        sMod->warn("Arsenal Mastery: failed while writing progression for slot " + std::to_string(slot));
+        return;
+    }
+
+    std::filesystem::rename(temp_path, final_path, ec);
+    if (ec) {
+        // Windows cannot replace an existing file with rename(). Fall back to remove+rename only
+        // after the complete temporary file has been closed successfully.
+        std::error_code remove_ec;
+        std::filesystem::remove(final_path, remove_ec);
+        ec.clear();
+        std::filesystem::rename(temp_path, final_path, ec);
+    }
+    if (ec) {
+        std::filesystem::remove(temp_path, ec);
+        sMod->warn("Arsenal Mastery: cannot commit progression for slot " + std::to_string(slot));
+        return;
+    }
+
+    sDirty = false;
+    sLastFlushTick = sTick;
+}
+
+void load_progress(int slot) {
+    sProgression.reset();
+    sNanotech.reset();
+    reset_runtime_state();
+
+    if (slot < 0 || sDataDir.empty()) {
+        sDirty = false;
+        return;
+    }
+
+    std::ifstream in(progress_path(slot));
+    if (!in) {
+        sDirty = false;
+        return;
+    }
+
+    arsenal::PersistedState saved;
+    if (!arsenal::read_progress(in, saved)) {
+        sMod->warn("Arsenal Mastery: unsupported/damaged progression file for slot " + std::to_string(slot));
+        sDirty = false;
+        return;
+    }
+
+    arsenal::apply_progress(saved, sProgression, sNanotech);
+    reset_runtime_state();
+    sDirty = saved.source_version != arsenal::kProgressFileVersion;  // migrate v1 on next flush.
+    sMod->info("Arsenal Mastery: loaded progression for save slot " + std::to_string(slot));
+}
+
+void sync_save_slot() {
+    if (!sMod->has_api_11()) return;
+    const int current = sMod->save_slot_current();
+    if (current == sSaveSlot) return;
+
+    if (sSaveSlot >= 0 && sDirty) save_progress(sSaveSlot);
+    sSaveSlot = current;
+    if (current < 0) return;
+
+    if (sFreshNewGame) {
+        sFreshNewGame = false;
+        sDirty = true;
+        save_progress(current);
+    } else {
+        load_progress(current);
+    }
+}
+
+template <class Table>
+int weapon_from_class(std::int16_t cls, const Table& table) {
+    for (const auto& entry : table) {
+        if (entry.moby_class == cls) return entry.weapon;
+    }
+    return -1;
+}
+
+int weapon_from_attacker(std::uint32_t attacker) {
+    if (attacker == 0) return -1;
+    const std::uint32_t hero_moby = get<std::uint32_t>(hero() + kHeroMoby);
+    const std::int16_t cls = get<std::int16_t>(attacker + kMobyClass);
+
+    if (attacker == hero_moby || cls == 0) {
+        const std::uint32_t held = get<std::uint32_t>(exe(sDisc->held_moby));
+        if (held != 0) {
+            const int by_class = weapon_from_class(get<std::int16_t>(held + kMobyClass), kHeldWeapons);
+            if (by_class >= 0) return by_class;
+        }
+        return arsenal::weapon_from_item(get<std::int32_t>(exe(sDisc->item_in_hand)));
+    }
+
+    // Class 121 is normally a Bomb Glove bomb, but Visibomb's split projectiles reuse it and keep
+    // their Visibomb projectile as owner. Mirror RAC-RS's owner check before the static class map.
+    if (cls == 121) {
