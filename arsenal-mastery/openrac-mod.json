@@ -2,7 +2,7 @@
   "format": 2,
   "id": "arsenal-mastery",
   "name": "Arsenal Mastery",
-  "version": "0.4.7",
+  "version": "0.4.8",
   "author": "AsobiCodes — original developer · Moritz Wallinger — OpenRAC port",
   "description": "OpenRAC port of Arsenal Mastery: post-hit health-delta weapon XP with death-confirmed last-hit bonus, per-save V1-V99 progression, level power, enemy rebalance, Nanotech progression, ammo-capacity progression and survival kill refunds.",
   "license": "MIT",
@@ -15,6 +15,7 @@
     ]
   },
   "hooks": [
+    "rac1.menu.item_grid.draw",
     "rac1.combat.get_hit",
     "rac1.player.take_damage",
     "rac1.moby.record_death",
@@ -121,7 +122,7 @@
       "name": "XP HUD",
       "type": "bool",
       "default": true,
-      "description": "Show weapon XP in an in-game Ratchet & Clank-style gauge (OpenRAC 1.14), or native game-font text on older supported builds."
+      "description": "Native ammo-aligned weapon XP bar and short level-up popup. Adds V1-V99 XP bars to the original weapons icon grid when OpenRAC supports menu overlays."
     },
     {
       "key": "start_level",
@@ -280,5 +281,6 @@
         "trace": false
       }
     }
-  ]
+  ],
+  "overlay_menus": true
 }
