@@ -27,6 +27,7 @@
 #include <vector>
 
 #include "openrac/mod.hpp"
+#include "openrac/games/rac1.hpp"
 
 namespace {
 
@@ -224,6 +225,11 @@ std::atomic<int> sHudNanoLevel{0}, sHudNanoPercent{0}, sHudShowNano{0}, sHudUpgr
 std::array<int, arsenal::kWeaponCount> sHudKnownLevels{};
 std::atomic<int> sHudAmmoCap{0}, sLevelPopupWeapon{-1}, sLevelPopupLevel{1}, sLevelPopupRemaining{0};
 int sLevelPopupTicks = 0;
+using FontTextureFn = std::uint64_t (*)(int);
+using DrawQuadFn = void (*)(int, int, int, int, int, int, int, int, std::uint64_t, std::uint64_t);
+FontTextureFn sFontTexture = nullptr;
+DrawQuadFn sDrawQuad = nullptr;
+bool sWeaponGridEnabled = false;
 int sHudUpgradeHold = 0;
 int sNanoDisplayHold = 0;
 double sNanoPreviousXp = -1.0;
@@ -1071,6 +1077,85 @@ void overlay_gauge(const openrac_overlay& draw, float x, float y, float w, int p
     }
 }
 
+std::uint64_t menu_gs_color(std::uint32_t rgba) {
+    const std::uint32_t a = ((rgba & 0xFFu) * 128u + 127u) / 255u;
+    return (static_cast<std::uint64_t>(a) << 24)
+           | (((rgba >> 8) & 0xFFu) << 16)
+           | (((rgba >> 16) & 0xFFu) << 8)
+           | ((rgba >> 24) & 0xFFu);
+}
+
+// Guest native font and sprite drawer. Both pointers are resolved before taking
+// the hook; a missing sprite function must never prevent the mod from loading.
+void draw_menu_char(char ch, int x, int y, int width, int height,
+                    std::uint32_t rgba, std::uint64_t texture) {
+    if (ch < 32 || ch > 126 || !sDrawQuad) return;
+    const std::uint32_t base = std::string(sDisc->version) == "ntsc"
+                                   ? 0x001DF3F0u : 0x001DF770u;
+    const gaddr metrics = exe(base) + static_cast<unsigned char>(ch) * 4u;
+    const int advance = get<std::int8_t>(metrics + 3);
+    if (advance <= 0) return;
+    sDrawQuad(x, y, width, height, get<std::uint8_t>(metrics),
+              get<std::uint8_t>(metrics + 1), 16, 16, menu_gs_color(rgba), texture);
+}
+void draw_menu_label(const std::string& label, int x, int y,
+                     std::uint32_t rgba, std::uint64_t texture) {
+    const std::uint32_t base = std::string(sDisc->version) == "ntsc"
+                                   ? 0x001DF3F0u : 0x001DF770u;
+    for (char c : label) {
+        if (c < 32 || c > 126) continue;
+        const gaddr metrics = exe(base) + static_cast<unsigned char>(c) * 4u;
+        const int advance = get<std::int8_t>(metrics + 3);
+        if (advance <= 0) continue;
+        if (c != ' ') {
+            const int top = get<std::int8_t>(metrics + 2);
+            draw_menu_char(c, x, y + top / 2, 8, 8, rgba, texture);
+        }
+        x += std::max(1, advance / 2);
+    }
+}
+
+// This is the actual game's Weapons icon-grid draw hook, not a mod-created menu.
+template <class Original>
+std::int32_t on_weapon_grid_draw(Original original, std::uint32_t grid) {
+    const std::int32_t result = original(grid);
+    if (!sXpDisplay || !sWeaponGridEnabled || grid == 0 || sMod->loaded_level() < 0) return result;
+    const int rows = get<std::int32_t>(grid + 0x40);
+    const int cols = get<std::int32_t>(grid + 0x44);
+    const gaddr cells = get<gaddr>(grid + 0x48);
+    if (cells == 0 || rows != 3 || cols != 5) return result;
+    const std::uint64_t font = sFontTexture(2);
+    // Verify this is the weapons page: reject other 5x3 item grids.
+    int weapon_cells = 0;
+    for (int index = 0; index < 15; ++index) {
+        const gaddr cell = cells + static_cast<gaddr>(index * 10);
+        if (get<std::int16_t>(cell + 4) != 0) continue;
+        if (arsenal::weapon_from_item(get<std::int16_t>(cell + 6)) >= 0) ++weapon_cells;
+    }
+    if (weapon_cells < 10) return result;
+    for (int row = 0; row < 3; ++row) {
+        for (int col = 0; col < 5; ++col) {
+            const auto pos = arsenal::ui::weapon_cell(row, col);
+            const gaddr cell = cells + static_cast<gaddr>((row * 5 + col) * 10);
+            const int item = get<std::int16_t>(cell + 6);
+            if (get<std::int16_t>(cell + 4) != 0
+                || item != weapons()[static_cast<std::size_t>(pos.weapon)].item_id) continue;
+            const int weapon = pos.weapon, level = sProgression.level(weapon);
+            const int pct = arsenal::ui::percent(sProgression.progress(weapon));
+            const std::uint32_t color = arsenal::ui::level_color(level);
+            const int x = static_cast<int>(std::lround(pos.center_x - 14));
+            const int y = static_cast<int>(std::lround(pos.center_y + arsenal::ui::kMenuBarOffset));
+            draw_menu_label("V" + std::to_string(level), x + 16, y - 4, color, font);
+            for (int dot = 0; dot < 15; ++dot) {
+                const int filled = (pct * 15 + 99) / 100;
+                draw_menu_char('I', x + dot, y, 1, 3,
+                               dot < filled ? color : 0x303846BBu, font);
+            }
+        }
+    }
+    return result;
+}
+
 void draw_native_hud(void*, const openrac_overlay* draw) {
     // Window-thread callback: read atomic snapshots, never guest RAM or progression state.
     if (!draw || !draw->rect || !draw->text || !sHudActive.load(std::memory_order_relaxed)) return;
@@ -1219,6 +1304,15 @@ void load(openrac::Mod& mod) {
     mod.hook<NewGamePlus>([](auto original, std::int32_t slot) { on_new_game_plus(original, slot); });
     mod.on_frame(on_frame);
     sOverlayEnabled = mod.has_overlay() && mod.on_overlay(draw_native_hud);
+    sFontTexture = mod.function<FontTextureFn>("func_001F4868");
+    sDrawQuad = mod.function<DrawQuadFn>("func_001F5800");
+    if (sFontTexture && sDrawQuad) {
+        mod.hook<openrac::rac1::Menu_ItemGrid_Draw>(
+            [](auto original, std::uint32_t grid) { return on_weapon_grid_draw(original, grid); });
+        sWeaponGridEnabled = true;
+    } else {
+        mod.warn("Native weapon grid font unavailable; gameplay XP HUD stays active");
+    }
 
     // No additional mod menu page. The weapon grid is rendered by the game.\n
     mod.info(
