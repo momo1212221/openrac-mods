@@ -37,10 +37,21 @@ jobs:
           sha="$GITHUB_SHA"
 
           if gh api "repos/$GH_REPO/git/ref/tags/$tag" >/dev/null 2>&1; then
-            echo "$tag already exists; nothing to publish."
-            exit 0
+            current="$(gh api "repos/$GH_REPO/git/ref/tags/$tag" --jq '.object.sha')"
+            if [ "$current" = "$sha" ]; then
+              echo "$tag already points at $sha; nothing to publish."
+              exit 0
+            fi
+            if gh release view "$tag" >/dev/null 2>&1; then
+              echo "::error::$tag is already published; refusing to move a released tag."
+              exit 1
+            fi
+            gh api -X PATCH "repos/$GH_REPO/git/refs/tags/$tag" -f sha="$sha" -F force=true
+            echo "Moved unpublished $tag from $current to $sha"
+          else
+            gh api -X POST "repos/$GH_REPO/git/refs" -f ref="refs/tags/$tag" -f sha="$sha"
+            echo "Created $tag at $sha"
           fi
 
-          gh api -X POST "repos/$GH_REPO/git/refs" -f ref="refs/tags/$tag" -f sha="$sha"
           gh workflow run build.yml --ref "$tag"
           echo "Dispatched build.yml for $tag at $sha"

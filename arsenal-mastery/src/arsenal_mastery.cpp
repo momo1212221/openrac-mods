@@ -539,7 +539,6 @@ int nanotech_orbs_for(double points, double max_points, int retail_max_orbs) {
         std::max(1, retail_max_orbs - 1)
     );
 }
-}
 
 void sync_nanotech() {
     if (!sNanotechEnabled || sMod->loaded_level() < 0) {
