@@ -55,13 +55,14 @@ struct Disc {
     std::uint32_t hit_ring;
     std::uint32_t challenge;
     std::uint32_t gold_flags;
+    std::uint32_t hud_slots;
 };
 
 constexpr Disc kDiscs[] = {
     {"pal", 0x0013F450u, 0x001416F8u, 0x0015EEA0u, 0x0013D530u, 0x00140508u,
-     0x001404E0u, 0x001C43B0u, 0x00178200u, 0x0015EF20u, 0x0013E620u},
+     0x001404E0u, 0x001C43B0u, 0x00178200u, 0x0015EF20u, 0x0013E620u, 0x00199C60u},
     {"ntsc", 0x0013F350u, 0x001415F8u, 0x0015EDA0u, 0x0013D428u, 0x00140408u,
-     0x001403E0u, 0x001C40B0u, 0x00178100u, 0x0015EE20u, 0x0013E520u},
+     0x001403E0u, 0x001C40B0u, 0x00178100u, 0x0015EE20u, 0x0013E520u, 0x00199B60u},
 };
 
 struct GetHit {
@@ -223,7 +224,10 @@ bool sOverlayEnabled = false;
 std::atomic<int> sHudActive{0}, sHudWeapon{-1}, sHudLevel{1}, sHudPercent{0}, sHudMax{0};
 std::atomic<int> sHudNanoLevel{0}, sHudNanoPercent{0}, sHudShowNano{0}, sHudUpgradeTicks{0};
 std::array<int, arsenal::kWeaponCount> sHudKnownLevels{};
-std::atomic<int> sHudAmmoCap{0}, sLevelPopupWeapon{-1}, sLevelPopupLevel{1}, sLevelPopupRemaining{0};
+std::atomic<int> sHudAmmoCap{0}, sHudAmmoX{0}, sHudAmmoAlpha{0}, sHudSmoothPercent{0};
+std::atomic<int> sLevelPopupWeapon{-1}, sLevelPopupLevel{1}, sLevelPopupRemaining{0};
+int sHudTweenWeapon = -1;
+int sHudTweenPercent = 0;
 int sLevelPopupTicks = 0;
 using FontTextureFn = std::uint64_t (*)(int);
 using DrawQuadFn = void (*)(int, int, int, int, int, int, int, int, std::uint64_t, std::uint64_t);
@@ -285,6 +289,15 @@ void reset_runtime_state() {
     sNanoDisplayHold = 0;
     sNanoPreviousXp = -1.0;
     sHudActive.store(0, std::memory_order_relaxed);
+    sHudAmmoAlpha.store(0, std::memory_order_relaxed);
+    sHudAmmoCap.store(0, std::memory_order_relaxed);
+    sHudAmmoX.store(0, std::memory_order_relaxed);
+    sHudSmoothPercent.store(0, std::memory_order_relaxed);
+    sHudTweenWeapon = -1;
+    sHudTweenPercent = 0;
+    sLevelPopupTicks = 0;
+    sLevelPopupWeapon.store(-1, std::memory_order_relaxed);
+    sLevelPopupRemaining.store(0, std::memory_order_relaxed);
 }
 
 std::filesystem::path progress_path(int slot) {
@@ -994,8 +1007,32 @@ void update_hud() {
         return;
     }
 
-    const int held = arsenal::weapon_from_item(current_item());
+    const int held_item = current_item();
+    const int held = arsenal::weapon_from_item(held_item);
     sHudWeapon.store(held, std::memory_order_relaxed);
+    // Follow the actual RAC1 ammo HUD element, not an independent screen-space widget.
+    // The HUD holds its current ammo-counter pointer at +0x80 and its icon/frame
+    // fade at +0x70. When the game hides the ammo badge, the XP strip disappears too.
+    int ammo_x = 0, ammo_max = 0, ammo_alpha = 0;
+    if (held >= 0 && weapons()[static_cast<std::size_t>(held)].has_ammo && held_item >= 0) {
+        const gaddr expected = exe(sDisc->ammo) + static_cast<gaddr>(held_item) * 4u;
+        const gaddr slots = exe(sDisc->hud_slots);
+        for (int i = 0; i < arsenal::ui::kHudElementCount; ++i) {
+            const gaddr slot = slots + static_cast<gaddr>(i * arsenal::ui::kHudElementStride);
+            if (get<gaddr>(slot + arsenal::ui::kHudAmmoPointerOffset) != expected) continue;
+            const int max_ammo = get<std::int32_t>(slot + arsenal::ui::kHudAmmoValueOffset);
+            const int x = get<std::int32_t>(slot + arsenal::ui::kHudAmmoXOffset);
+            if (max_ammo <= 0 || max_ammo > 9999 || x < -100 || x > 512) continue;
+            ammo_x = x;
+            ammo_max = max_ammo;
+            ammo_alpha = arsenal::ui::hud_alpha(
+                get<std::uint8_t>(slot + arsenal::ui::kHudAmmoFadeOffset));
+            break;
+        }
+    }
+    sHudAmmoX.store(ammo_x, std::memory_order_relaxed);
+    sHudAmmoCap.store(ammo_max, std::memory_order_relaxed);
+    sHudAmmoAlpha.store(ammo_alpha, std::memory_order_relaxed);
     if (held >= 0) {
         const int level = sProgression.level(held);
         const int previous = sHudKnownLevels[static_cast<std::size_t>(held)];
@@ -1005,8 +1042,15 @@ void update_hud() {
                            && !(level == 5 && !sProgression.is_mega(held)
                                 && sProgression.mega_allowed_by_xp(held));
         sHudLevel.store(level, std::memory_order_relaxed);
-        sHudAmmoCap.store(sRetailAmmoCap[static_cast<std::size_t>(held)], std::memory_order_relaxed);
-        sHudPercent.store(arsenal::ui::percent(sProgression.progress(held)), std::memory_order_relaxed);
+        const int percent = arsenal::ui::percent(sProgression.progress(held));
+        sHudPercent.store(percent, std::memory_order_relaxed);
+        if (sHudTweenWeapon != held) {
+            sHudTweenWeapon = held;
+            sHudTweenPercent = percent;
+        } else {
+            sHudTweenPercent = arsenal::ui::progress_tween(sHudTweenPercent, percent);
+        }
+        sHudSmoothPercent.store(sHudTweenPercent, std::memory_order_relaxed);
         sHudMax.store(maxed ? 1 : 0, std::memory_order_relaxed);
     }
     if (sHudUpgradeHold > 0) --sHudUpgradeHold;
@@ -1055,26 +1099,6 @@ void update_hud() {
     }
     sMod->hud_text_set(lines);
     sHudVisible = !lines.empty();
-}
-
-void overlay_box(const openrac_overlay& draw, float x, float y, float w, float h, bool highlight = false) {
-    draw.rect(draw.context, x + 2, y + 2, w, h, 0x100B06A0u);
-    draw.rect(draw.context, x, y, w, h, highlight ? 0xFFD581FFu : 0xB67B3EEFu);
-    draw.rect(draw.context, x + 2, y + 2, w - 4, h - 4, 0x28170FD8u);
-    draw.rect(draw.context, x + 3, y + 3, w - 6, 1, 0xF9C774BDu);
-}
-
-void overlay_gauge(const openrac_overlay& draw, float x, float y, float w, int pct, bool health = false) {
-    draw.rect(draw.context, x, y, w, 9, 0x95612CF0u);
-    draw.rect(draw.context, x + 2, y + 2, w - 4, 5, 0x110B09FFu);
-    const float filled = arsenal::ui::filled_width(w - 4, pct);
-    if (filled > 0) {
-        draw.rect(draw.context, x + 2, y + 2, filled, 5, health ? 0x84C8C8FFu : 0xF5B34AFFu);
-        draw.rect(draw.context, x + 2, y + 2, filled, 1, health ? 0xC4F6E6FFu : 0xFFE1A1FFu);
-    }
-    for (int tick = 1; tick <= 3; ++tick) {
-        draw.rect(draw.context, x + w * (static_cast<float>(tick) / 4.0f), y + 2, 1, 5, 0x4C311DB8u);
-    }
 }
 
 std::uint64_t menu_gs_color(std::uint32_t rgba) {
@@ -1167,45 +1191,44 @@ std::int32_t on_weapon_grid_draw(Original original, std::uint32_t grid) {
 }
 
 void draw_native_hud(void*, const openrac_overlay* draw) {
-    // Window-thread callback: read atomic snapshots, never guest RAM or progression state.
-    if (!draw || !draw->rect || !draw->text || !sHudActive.load(std::memory_order_relaxed)) return;
+    // The OpenRAC overlay is already in the game's 512x448 space.
+    // All game-memory reads and animation updates are on the tick thread.
+    if (!draw || !draw->rect || !draw->text
+        || sHudActive.load(std::memory_order_relaxed) == 0) return;
     const int weapon = sHudWeapon.load(std::memory_order_relaxed);
-    if (weapon >= 0 && weapon < static_cast<int>(weapons().size())
-        && weapons()[static_cast<std::size_t>(weapon)].has_ammo) {
-        // Original hudbar.luau design: directly under the existing ammo HUD in 512x448.
-        const bool ntsc = std::string(sDisc->version) == "ntsc";
-        const float x = 12.0f, y = static_cast<float>(arsenal::ui::hud_bar_y(ntsc));
-        const int level = sHudLevel.load(std::memory_order_relaxed);
-        const std::uint32_t color = arsenal::ui::level_color(level);
-        const int pct = sHudMax.load(std::memory_order_relaxed) ? 100
-                        : sHudPercent.load(std::memory_order_relaxed);
-        const float width = static_cast<float>(arsenal::ui::ammo_box_width(
-            sHudAmmoCap.load(std::memory_order_relaxed)) + 20);
-        const std::string v = "V" + std::to_string(level);
-        draw->text(draw->context, x, y - 3, 9, color, v.c_str());
-        draw->rect(draw->context, x + 24, y, width, 4, 0x1C2438C8u);
-        const float fill = arsenal::ui::filled_width(width - 2, pct);
-        if (fill > 0.0f) draw->rect(draw->context, x + 25, y + 1, fill, 2, color);
+    const int alpha = sHudAmmoAlpha.load(std::memory_order_relaxed);
+    if (weapon < 0 || weapon >= static_cast<int>(weapons().size()) || alpha <= 0) return;
+    if (!weapons()[static_cast<std::size_t>(weapon)].has_ammo) return;
+
+    // RAC2-style red weapon XP line, immediately below the existing ammo badge.
+    // The x position and visibility come from that exact game's HUD element.
+    const float x = arsenal::ui::ammo_xp_x(sHudAmmoX.load(std::memory_order_relaxed));
+    const float y = arsenal::ui::ammo_xp_y(std::string(sDisc->version) == "ntsc");
+    const float width = arsenal::ui::ammo_xp_width(sHudAmmoCap.load(std::memory_order_relaxed));
+    const int level = sHudLevel.load(std::memory_order_relaxed);
+    const int percent = sHudMax.load(std::memory_order_relaxed) ? 100
+                       : sHudSmoothPercent.load(std::memory_order_relaxed);
+    const auto fade = [alpha](std::uint32_t color) -> std::uint32_t {
+        return arsenal::ui::with_alpha(color, static_cast<int>(color & 0xFFu) * alpha / 255);
+    };
+    draw->rect(draw->context, x - 1, y - 1, width + 2, 6, fade(0x396184B4u));
+    draw->rect(draw->context, x, y, width, 4, fade(0x101C30E0u));
+    const float filled = arsenal::ui::filled_width(width - 2, percent);
+    if (filled > 0.0f) {
+        const std::uint32_t color = arsenal::ui::ammo_xp_color(level);
+        draw->rect(draw->context, x + 1, y + 1, filled, 2, fade(color));
+        draw->rect(draw->context, x + 1, y + 1, filled, 1, fade(0xFFD4C9A0u));
     }
     const int remaining = sLevelPopupRemaining.load(std::memory_order_relaxed);
-    const int popped = sLevelPopupWeapon.load(std::memory_order_relaxed);
-    if (remaining > 0 && popped >= 0 && popped < static_cast<int>(weapons().size())) {
-        const int level = sLevelPopupLevel.load(std::memory_order_relaxed);
-        const std::uint8_t alpha = arsenal::ui::popup_alpha(
-            remaining, std::string(sDisc->version) == "ntsc");
-        if (alpha > 0) {
-            const std::uint32_t color = arsenal::ui::with_alpha(arsenal::ui::level_color(level), alpha);
-            draw->rect(draw->context, 228, 61, 56, 2, color);
-            const std::string label = "V" + std::to_string(level);
-            draw->text(draw->context, 239, 37, 22, color, label.c_str());
-        }
-    }
-    if (sHudShowNano.load(std::memory_order_relaxed)) {
-        draw->rect(draw->context, 12, 65, 90, 4, 0x1C2438C8u);
-        const float fill = arsenal::ui::filled_width(
-            90, sHudNanoPercent.load(std::memory_order_relaxed));
-        if (fill > 0) draw->rect(draw->context, 12, 65, fill, 4, 0x84C8C8FFu);
-    }
+    const int popup_weapon = sLevelPopupWeapon.load(std::memory_order_relaxed);
+    const bool popup = remaining > 0 && popup_weapon == weapon;
+    const int popup_alpha = popup ? arsenal::ui::popup_alpha(
+        remaining, std::string(sDisc->version) == "ntsc") : 255;
+    const auto label = "V" + std::to_string(level);
+    const std::uint32_t label_color = popup ? arsenal::ui::level_color(level) : 0xC3E4F6FFu;
+    draw->text(draw->context, x + width + 5, y - 6, popup ? 11.0f : 9.0f,
+               fade(arsenal::ui::with_alpha(label_color, popup_alpha)), label.c_str());
+    // No extra screen, XP numbers, weapon-name text or floating Nanotech box.
 }
 
 void clean_victim_cache() {
