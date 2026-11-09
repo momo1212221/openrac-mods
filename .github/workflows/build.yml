@@ -81,15 +81,17 @@ jobs:
             os: ubuntu-22.04
           - name: linux-aarch64
             os: ubuntu-24.04-arm
-          # Apple silicon, and Intel cross-built on the same runner (one architecture per build).
+          # Different GitHub-hosted macOS pools. Both jobs on macos-15 were
+          # waiting for the same oversubscribed Apple Silicon queue and got
+          # cancelled before a compiler ever started (0.4.5--0.4.8).
+          # macos-26 is an ARM64 M1 runner, and macos-15-intel is a real x64
+          # runner; neither requires anyone to own or connect a Mac.
           - name: macos-arm64
-            os: macos-15
+            os: macos-26
             configure: -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
           - name: macos-x86_64
-            os: macos-15
+            os: macos-15-intel
             configure: -DCMAKE_OSX_ARCHITECTURES=x86_64 -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
-            # An Intel build's tests cannot run on an Apple silicon runner without Rosetta.
-            skip_tests: true
           # Android (OpenRAC's app, arm64): the runner's NDK, cross-built, no test run here.
           - name: android-arm64
             os: ubuntu-24.04
@@ -107,6 +109,13 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
+      - name: Record macOS build environment
+        if: runner.os == 'macOS'
+        run: |
+          uname -m
+          sw_vers
+          xcodebuild -version
+          xcrun --show-sdk-path
       - name: Ninja
         run: python -m pip install ninja
       - name: Set up MSVC

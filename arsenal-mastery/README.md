@@ -1,6 +1,6 @@
 # Arsenal Mastery for OpenRAC
 
-## Native UI changes (0.4.8 development branch)
+## Native UI changes (0.4.8)
 
 Arsenal Mastery now uses the weapon HUD design of **Ratchet & Clank 2: Going Commando** as a reference, while retaining the original Ratchet & Clank 1 icon and ammo number:
 
@@ -9,6 +9,8 @@ Arsenal Mastery now uses the weapon HUD design of **Ratchet & Clank 2: Going Com
 - XP bar filling interpolates over a few ticks. A level-up briefly lights up the V label within that same HUD area; it does not open a secondary notification.
 - When there is no ammo badge (wrench, gadgets, cutscenes or a hidden game HUD), no detached progress panel is displayed. Weapon levels and XP still advance normally.
 - In the game's existing Weapons menu, each icon receives a compact XP bar and V1-V99 label; there is no separate Arsenal Mastery pause page.
+
+The first 0.4.8 release build was blocked by GitHub-hosted `macos-15` runner availability: both macOS jobs were cancelled **before setup**, with no compiler output. The CI workflow now separates the native Apple Silicon build (`macos-26`, ARM64) from the Intel build (`macos-15-intel`, x86-64). Neither requires a locally connected Mac. The updated workflow must rebuild the existing **unpublished** 0.4.8 tag before any macOS installer is available. Do not claim release success before GitHub publishes an ARM64 archive.
 
 This is **unreleased source**, not an installable macOS build. Do not paste the GitHub branch tree URL into the launcher's *Add a mod* field. The current build has to pass the native tests and generate `arsenal-mastery-0.4.8-macos-arm64.zip` before the launcher can install it. Existing save progression is kept in the per-slot sidecar; no save-data migration is part of this HUD change.
 
