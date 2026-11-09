@@ -2,11 +2,17 @@
 
 ## Native UI changes (0.4.8 development branch)
 
-The game's existing Weapons icon grid receives a compact coloured XP indicator and a V1-V99 label at each owned weapon icon, including the wrench in the header. The standard ammo HUD gets a small XP strip beneath it, and level-ups display a short fading V-level indication. Mod startup notifications and the separate Weapons/Arsenal Mastery pause page are not registered.
+Arsenal Mastery now uses the weapon HUD design of **Ratchet & Clank 2: Going Commando** as a reference, while retaining the original Ratchet & Clank 1 icon and ammo number:
 
-This is **unreleased branch source**, not a runnable 0.4.8 release. The launcher can install only after GitHub Actions successfully builds and publishes a matching macOS arm64 archive and SHA256SUMS. Don't use the branch's tree URL in the install-from-link box. Keep the installed 0.4.3/0.4.5 build until a tested release exists.
+- The **large separate weapon XP panel at the bottom-left is not drawn**. There are no always-on weapon-name / XP-number / debug lines.
+- A slim, red (gold after V5) XP strip appears immediately **under the original ammo badge in the top-left**. Its position, weapon and opacity follow the actual game's ammo HUD record, including switching weapons and its built-in hide/fade animation. The V level appears as a small tag on the same line.
+- XP bar filling interpolates over a few ticks. A level-up briefly lights up the V label within that same HUD area; it does not open a secondary notification.
+- When there is no ammo badge (wrench, gadgets, cutscenes or a hidden game HUD), no detached progress panel is displayed. Weapon levels and XP still advance normally.
+- In the game's existing Weapons menu, each icon receives a compact XP bar and V1-V99 label; there is no separate Arsenal Mastery pause page.
 
-Implementation requires OpenRAC API 1.14 for the native on-overlay HUD. Older OpenRAC builds fall back to the existing HUD text API. The menu hook uses RAC1's own native item grid (PAL/NTSC-U) and does not replace the game's menu graphics. Its visual alignment and function lookups still require an in-game PAL + NTSC verification.
+This is **unreleased source**, not an installable macOS build. Do not paste the GitHub branch tree URL into the launcher's *Add a mod* field. The current build has to pass the native tests and generate `arsenal-mastery-0.4.8-macos-arm64.zip` before the launcher can install it. Existing save progression is kept in the per-slot sidecar; no save-data migration is part of this HUD change.
+
+OpenRAC mod API 1.14 is required for the attached on-screen XP bar. On older builds, progression keeps working but no separate fallback text panel is drawn. The weapon-menu integration and alignment still need a game-runtime check on PAL and NTSC-U.
 
 OpenRAC port of **Arsenal Mastery** from RAC-RS.
 
@@ -17,11 +23,13 @@ OpenRAC port of **Arsenal Mastery** from RAC-RS.
 
 In **Mods → Add a mod**, paste this repository/release link:
 
-`https://github.com/momo1212221/openrac-mods/releases/tag/arsenal-mastery-v0.4.6`
+`https://github.com/momo1212221/openrac-mods`
 
 OpenRAC chooses the archive for the current platform and verifies it against `SHA256SUMS`.
 
-## 0.4.6 status
+## Previous release: 0.4.6
+
+The following describes the previous 0.4.6 implementation, not the 0.4.8 native HUD development branch.
 
 0.4.6 keeps the 0.4.5 gameplay and runtime hardening, including `hero_pose()` for the held item and current health. The first-gameplay log stays available for diagnostics; a visible mod notice appears only with Trace logging enabled.
 
