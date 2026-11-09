@@ -165,13 +165,9 @@ int weapon_from_hit(const openrac_hit& hit) {
         return current_weapon();
     }
 
-    if (hit.source_oclass > 0) {
-        const int mapped = weapon_from_oclass(hit.source_oclass);
-        if (mapped >= 0) {
-            return mapped;
-        }
-    }
-
+    // SDK 1.14.2 exposes the attacker slot but not the later source_oclass extension. For
+    // projectiles and weapon-owned mobys the attacker slot's class is enough to use the original
+    // Arsenal Mastery attribution table.
     return weapon_from_oclass(moby_oclass_from_slot(hit.attacker));
 }
 
@@ -282,6 +278,24 @@ void update_progress_slot() {
                    || status.phase == OPENRAC_PLAY_MENU)) {
         sUnsavedSession = true;
     }
+}
+
+double rebalance_factor() {
+    if (!sEnemyRebalance || sMod == nullptr) {
+        return 1.0;
+    }
+    const int level = sMod->loaded_level();
+    double factor = 1.0;
+    if (level >= 0 && level < static_cast<int>(kRebalance.size())) {
+        factor = kRebalance[static_cast<std::size_t>(level)];
+    }
+    if (sHardRebalance) {
+        factor *= kHardFactor;
+    }
+    if (sNgPlus) {
+        factor *= kNgPlusFactor;
+    }
+    return factor;
 }
 
 int on_moby_hit(void*, const openrac_hit* source) {
