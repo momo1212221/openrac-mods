@@ -995,7 +995,7 @@ void update_hud() {
     const int held = arsenal::weapon_from_item(held_item);
     sHudWeapon.store(held, std::memory_order_relaxed);
     // Follow the actual RAC1 ammo HUD element, not an independent screen-space widget.
-    // The HUD holds its current ammo-counter pointer at +0x80 and its icon/frame
+    // The HUD holds its current ammo-counter pointer at +0x0C and its icon/frame
     // fade at +0x70. When the game hides the ammo badge, the XP strip disappears too.
     int ammo_x = 0, ammo_max = 0, ammo_alpha = 0;
     if (held >= 0 && weapons()[static_cast<std::size_t>(held)].has_ammo && held_item >= 0) {
