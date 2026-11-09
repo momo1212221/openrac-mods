@@ -208,6 +208,7 @@ double sNanoMax = 10.0;
 int sNanoLastOrbs = -1;
 int sLastNanoLevel = 1;
 bool sHudVisible = false;
+bool sNativeHudOverlay = false;
 bool sRuntimeAnnounced = false;
 int sUiPageIndex = 0;
 
@@ -880,6 +881,53 @@ void progress_page_event(const openrac::UiPage& page, const openrac::UiEvent& ev
     }
 }
 
+// The original RAC-RS Arsenal Mastery draws this bar below the game's ammo box.
+ // Keep its 512x448 coordinates and V-level palette instead of placing generic mod text
+ // over the centre of the screen. OpenRAC's on_overlay callback is available in API 1.14.
+constexpr std::array<std::uint32_t, 8> kNativeXpColors = {{
+    0x8FA0D8FFu, 0x5CD66CFFu, 0x4CC3F0FFu, 0xC070F0FFu,
+    0xFFC830FFu, 0xFF5CD8FFu, 0x40E8FFFFu, 0xFFFFFFFFu,
+}};
+
+std::uint32_t native_xp_color(int level) {
+    if (level > static_cast<int>(kNativeXpColors.size())) return 0xFF9030FFu;
+    return kNativeXpColors[static_cast<std::size_t>(
+        std::clamp(level, 1, static_cast<int>(kNativeXpColors.size())) - 1
+    )];
+}
+
+void draw_native_weapon_xp(void*, const openrac_overlay* overlay) {
+    if (!overlay || !overlay->rect || !overlay->text || !sMod || !sDisc || !sXpDisplay
+        || sMod->loaded_level() < 0) {
+        return;
+    }
+
+    const int weapon = arsenal::weapon_from_item(current_item());
+    if (weapon < 0 || weapon >= static_cast<int>(weapons().size())) return;
+    const auto& def = weapons()[static_cast<std::size_t>(weapon)];
+
+    // Weapons without the retail ammo box need a different native anchor. They remain visible
+    // on the progress page, rather than floating an unrelated bar over the world.
+    if (!def.has_ammo) return;
+
+    // Matches hudbar.luau in the original mod, including the PAL/NTSC ammo-box offset.
+    const float ammo_top = sDisc->version[0] == 'n' ? 18.0f : 10.0f;
+    const float y = ammo_top + 32.0f + 1.0f;
+    const float x = 12.0f;
+    const float bar_x = x + 24.0f;
+    const float bar_width = (current_ammo_cap(weapon) >= 100 ? 95.0f : 70.0f) + 20.0f;
+    const float progress = static_cast<float>(std::clamp(sProgression.progress(weapon), 0.0, 1.0));
+    const int level = sProgression.level(weapon);
+    const std::uint32_t color = native_xp_color(level);
+
+    overlay->rect(overlay->context, bar_x, y, bar_width, 4.0f, 0x1C2438C8u);
+    if (progress > 0.0f) {
+        overlay->rect(overlay->context, bar_x, y, bar_width * progress, 4.0f, color);
+    }
+    const std::string level_text = "V" + std::to_string(level);
+    overlay->text(overlay->context, x, y - 3.0f, 9.0f, color, level_text.c_str());
+}
+
 openrac_hud_text hud_line(const std::string& text, float y, float scale, std::uint8_t r, std::uint8_t g, std::uint8_t b) {
     openrac_hud_text line{};
     std::snprintf(line.text, sizeof line.text, "%s", text.c_str());
@@ -895,6 +943,12 @@ openrac_hud_text hud_line(const std::string& text, float y, float scale, std::ui
 }
 
 void update_hud() {
+    // Do not draw the legacy centred text overlay alongside the game-style XP bar.
+    if (sNativeHudOverlay) {
+        if (sHudVisible && sMod->has_api_12()) sMod->hud_text_set({});
+        sHudVisible = false;
+        return;
+    }
     if (!sXpDisplay || !sMod->has_api_12() || sMod->loaded_level() < 0) {
         if (sHudVisible && sMod->has_api_12()) {
             sMod->hud_text_set({});
@@ -947,7 +1001,7 @@ void on_frame() {
     if (!sRuntimeAnnounced && sMod->loaded_level() >= 0) {
         sRuntimeAnnounced = true;
         sMod->info("Arsenal Mastery 0.4.5 runtime active");
-        if (sMod->has_notice()) sMod->play_notice("Arsenal Mastery 0.4.5 active");
+        // Runtime verification stays in the log; a permanent top-screen notice looks like a mod.
     }
     update_hud();
     if (sSaveSlot >= 0 && sDirty && sTick >= sLastFlushTick + kFlushTicks) save_progress(sSaveSlot);
@@ -1014,6 +1068,7 @@ void load(openrac::Mod& mod) {
     sTick = 0;
     sLastFlushTick = 0;
     sRuntimeAnnounced = false;
+    sNativeHudOverlay = false;
     sNanotech.reset();
     reset_runtime_state();
 
@@ -1028,6 +1083,10 @@ void load(openrac::Mod& mod) {
     mod.hook<NewGame>([](auto original) { on_new_game(original); });
     mod.hook<NewGamePlus>([](auto original, std::int32_t slot) { on_new_game_plus(original, slot); });
     mod.on_frame(on_frame);
+
+    // API 1.14 paints in the game's 2D coordinate space on all desktop renderers.
+    // Older ports keep the existing native-font text HUD as a compatibility fallback.
+    if (mod.has_overlay()) sNativeHudOverlay = mod.on_overlay(draw_native_weapon_xp);
 
     if (mod.has_pause_items()) {
         const openrac::UiPage page = mod.ui_page(progress_page_event);
