@@ -121,6 +121,19 @@ int current_weapon() {
     return weapon_from_item(current_item());
 }
 
+bool loaded_mod(const char* id) {
+    if (sMod == nullptr) {
+        return false;
+    }
+    for (const auto& entry : sMod->mods()) {
+        if (entry.id == id) {
+            return true;
+        }
+    }
+    return false;
+}
+
+
 int weapon_from_oclass(int oclass) {
     for (const auto& entry : kAttackers) {
         if (entry.moby_class == oclass) {
@@ -294,8 +307,12 @@ int on_moby_hit(void*, const openrac_hit* source) {
     const float wanted_damage = static_cast<float>(source->damage * multiplier);
     float applied_damage = source->damage;
     bool replaced = false;
+    const bool multiplayer = loaded_mod("multiplayer");
 
-    if (std::fabs(wanted_damage - source->damage) > 0.0001f) {
+    // Multiplayer owns hit authority/network forwarding. Keep Arsenal progression visible and
+    // persistent there, but do not create a second scaled network hit. Solo play keeps the full
+    // Arsenal damage curve and replacement path.
+    if (!multiplayer && std::fabs(wanted_damage - source->damage) > 0.0001f) {
         openrac_hit replay = *source;
         replay.size = sizeof replay;
         replay.damage = wanted_damage;
@@ -333,7 +350,8 @@ int on_moby_hit(void*, const openrac_hit* source) {
             + " total=" + std::to_string(static_cast<int>(std::lround(weapon_xp(weapon))))
             + " V" + std::to_string(after) + " damage=" + std::to_string(source->damage) + "->"
             + std::to_string(applied_damage) + " T=" + std::to_string(balance)
-            + (replaced ? " replay=scaled" : " replay=original")
+            + (replaced ? " replay=scaled" : multiplayer ? " replay=multiplayer-authority"
+                                                     : " replay=original")
         );
     }
 
