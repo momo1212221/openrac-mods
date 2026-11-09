@@ -881,13 +881,14 @@ void sync_challenge_mode() {
 openrac::UiContent weapon_list_content() {
     openrac::UiContent content;
     content.title = sUiPageIndex == 0 ? "Weapons 1/2" : "Weapons 2/2";
+    const bool in_game = sMod != nullptr && sMod->loaded_level() >= 0;
     for (int row = 0; row < arsenal::ui::kWeaponsPerPage; ++row) {
         const int i = arsenal::ui::weapon_for_row(sUiPageIndex, row);
         const std::string label = std::string(weapons()[static_cast<std::size_t>(i)].display_name)
                                   + "   V" + std::to_string(sProgression.level(i));
-        content.items.push_back(openrac::UiItem::button(label, sSaveSlot >= 0));
+        content.items.push_back(openrac::UiItem::button(label, in_game));
     }
-    content.items.push_back(openrac::UiItem::button("Nanotech", sSaveSlot >= 0 && sNanotechEnabled));
+    content.items.push_back(openrac::UiItem::button("Nanotech", in_game && sNanotechEnabled));
     content.items.push_back(openrac::UiItem::button(
         sUiPageIndex == 0 ? "More Weapons" : "Previous Weapons"
     ));
@@ -959,13 +960,13 @@ void weapon_detail_event(const openrac::UiPage& page, const openrac::UiEvent& ev
 void progress_page_event(const openrac::UiPage& page, const openrac::UiEvent& event) {
     if (event.is(OPENRAC_UI_CHOOSE)) {
         const int weapon = arsenal::ui::weapon_for_row(sUiPageIndex, event.item());
-        if (weapon >= 0 && sSaveSlot >= 0) {
+        if (weapon >= 0 && sMod->loaded_level() >= 0) {
             sSelectedWeapon = weapon;
             sWeaponDetails.set(weapon_detail_content());
             sWeaponDetails.open();
             return;
         }
-        if (event.item() == arsenal::ui::kNanotechRow && sSaveSlot >= 0 && sNanotechEnabled) {
+        if (event.item() == arsenal::ui::kNanotechRow && sMod->loaded_level() >= 0 && sNanotechEnabled) {
             sSelectedWeapon = -1;
             sWeaponDetails.set(weapon_detail_content());
             sWeaponDetails.open();
@@ -1302,9 +1303,14 @@ void load(openrac::Mod& mod) {
     sFontTexture = mod.function<FontTextureFn>("func_001F4868");
     sDrawQuad = mod.function<DrawQuadFn>("func_001F5800");
     if (sFontTexture && sDrawQuad) {
-        mod.hook<openrac::rac1::Menu_ItemGrid_Draw>(
-            [](auto original, std::uint32_t grid) { return on_weapon_grid_draw(original, grid); });
-        sWeaponGridEnabled = true;
+        try {
+            mod.hook<openrac::rac1::Menu_ItemGrid_Draw>(
+                [](auto original, std::uint32_t grid) { return on_weapon_grid_draw(original, grid); });
+            sWeaponGridEnabled = true;
+        } catch (const openrac::Error& error) {
+            mod.warn(std::string("Native weapon menu unavailable; gameplay XP HUD stays active: ")
+                     + error.what());
+        }
     } else {
         mod.warn("Native weapon grid font unavailable; gameplay XP HUD stays active");
     }
