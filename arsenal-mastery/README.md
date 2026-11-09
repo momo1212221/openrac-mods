@@ -1,10 +1,10 @@
 # Arsenal Mastery for OpenRAC
 
-## Native UI changes (0.4.7 development branch)
+## Native UI changes (0.4.8 development branch)
 
 The game's existing Weapons icon grid receives a compact coloured XP indicator and a V1-V99 label at each owned weapon icon, including the wrench in the header. The standard ammo HUD gets a small XP strip beneath it, and level-ups display a short fading V-level indication. Mod startup notifications and the separate Weapons/Arsenal Mastery pause page are not registered.
 
-This is **unreleased branch source**, not a runnable 0.4.7 release. The launcher can install only after GitHub Actions successfully builds and publishes a matching macOS arm64 archive and SHA256SUMS. Don't use the branch's tree URL in the install-from-link box. Keep the installed 0.4.3/0.4.5 build until a tested release exists.
+This is **unreleased branch source**, not a runnable 0.4.8 release. The launcher can install only after GitHub Actions successfully builds and publishes a matching macOS arm64 archive and SHA256SUMS. Don't use the branch's tree URL in the install-from-link box. Keep the installed 0.4.3/0.4.5 build until a tested release exists.
 
 Implementation requires OpenRAC API 1.14 for the native on-overlay HUD. Older OpenRAC builds fall back to the existing HUD text API. The menu hook uses RAC1's own native item grid (PAL/NTSC-U) and does not replace the game's menu graphics. Its visual alignment and function lookups still require an in-game PAL + NTSC verification.
 
