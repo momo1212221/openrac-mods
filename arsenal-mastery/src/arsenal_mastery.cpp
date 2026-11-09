@@ -1153,6 +1153,16 @@ std::int32_t on_weapon_grid_draw(Original original, std::uint32_t grid) {
             }
         }
     }
+    // The wrench sits in the menu's header rather than the 5x3 weapon grid.
+    const int wrench_level = sProgression.level(0);
+    const int wrench_pct = arsenal::ui::percent(sProgression.progress(0));
+    const std::uint32_t wrench_color = arsenal::ui::level_color(wrench_level);
+    draw_menu_label("V" + std::to_string(wrench_level), 174, 31, wrench_color, font);
+    for (int dot = 0; dot < 28; ++dot) {
+        const int filled = (wrench_pct * 28 + 99) / 100;
+        draw_menu_char('I', 174 + dot * 2, 43, 1, 4,
+                       dot < filled ? wrench_color : 0x303846BBu, font);
+    }
     return result;
 }
 
