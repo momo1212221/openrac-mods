@@ -10,7 +10,6 @@
   ],
   "aiAssisted": true,
   "links": {
-    "source": "https://github.com/AsobiCodes/rac-rs/tree/main/bundled/mods/arsenal-mastery",
     "bugs": "https://github.com/OpenRAC/openrac-mods/issues"
   },
   "recommends": [],
