@@ -17,7 +17,7 @@ The catalog mirrors the latest deliberately selected published build of each act
 Modern Controls, Steam Deck Pack, Better HUD, QoL Hub, Checkpoint Plus, Collectible Tracker,
 Cutscene Manager, Death Improvements, Fast Travel, Improved Vendor, Mission Tracker, New Game Plus,
 Save Manager, Weapon Wheel Pause, Multiplayer, Graphics preparation, Graphics Effects Runtime,
-Backup & Cloud Saves, Enhanced Weapons, Enhanced Audio and the current Enhanced Accessibility Pack.
+Backup & Cloud Saves, Enhanced Weapons, Enhanced Audio, the current Enhanced Accessibility Pack and Arsenal Mastery.
 
 Native release archives are mirrored from their source repositories into one personal bundle release
 and re-hashed in this repository. Graphics preparation and Graphics Effects Runtime publish universal
@@ -39,3 +39,10 @@ names the OpenRAC link installer expects.
 `my-sources.json` pins every source repository, tag and version. The bundle workflow never takes an
 unreleased branch by accident. If a source repository is ahead of its latest release, this catalog
 keeps using the published version until the pin is intentionally updated.
+
+
+## Arsenal Mastery port
+
+`arsenal-mastery` 0.1.0 is the private OpenRAC port of AsobiCodes' RAC-RS Arsenal Mastery.
+It is built for Android ARM64, Linux ARM64/x86_64, macOS ARM64/x86_64 and Windows x86_64.
+It is included only in this personal `my-mods` catalog and is not submitted to the official OpenRAC mod index.
