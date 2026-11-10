@@ -7,10 +7,11 @@ inspired by Ratchet & Clank 2. Version 0.4.8 placed the XP strip *through the
 weapon icon* and V1 through the ammo number. **0.4.9 fixes that placement**:
 
 - Keep the original ammo weapon icon and ammo digits untouched.
-- Draw a narrow XP gauge below the **ammo number**, shifted to the right of the icon.
-  The small V-level tag appears beside that gauge, not over the digits.
-- The HUD strip tracks the original weapon/ammo HUD's x-position, visibility and fade.
-  XP fills animate smoothly. The level-up effect briefly lights up the same V tag.
+- Put the compact **V1–V99 badge first**, immediately to the left of the original weapon/ammo icon.
+- Draw a narrow amber XP gauge below the **ammo number**, shifted to the right of the icon.
+  The mod never redraws or replaces the disc-derived weapon icon.
+- The V badge and XP strip track the original weapon/ammo HUD's x-position, visibility and fade.
+  XP fills animate smoothly. The level-up effect briefly lights up the same V badge.
 - In the game's existing Weapons grid, compute the real rows, columns, and icon
   positions from the native game panel. A player with just three unlocked weapons
   gets a proper XP bar and V-level below each icon; no 3x5/ten-weapon requirement.
