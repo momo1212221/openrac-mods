@@ -52,14 +52,25 @@ int main() {
     assert(with_alpha(0xFF00AAFFu, 0) == 0xFF00AA00u);
     assert(with_alpha(0xFF00AA00u, 500) == 0xFF00AAFFu);
     assert(filled_width(28.0f, 50) == 14.0f);
-    // RAC2-like ammo HUD alignment: x follows the original game slot.
-    assert(ammo_xp_x(42) == 127.0f);
-    assert(ammo_xp_x(92) == 177.0f);
+    // Approved ammo HUD extension: V-level first, native game icon next, ammo digits untouched,
+    // XP strip under the digits. Every x coordinate follows the original game slot.
+    assert(ammo_level_x(42) == 48.0f);
+    assert(ammo_level_x(92) == 98.0f);
+    assert(ammo_level_y(false) == 48.0f);
+    assert(ammo_level_y(true) == 56.0f);
+    assert(ammo_level_badge_width(1) == 22.0f);
+    assert(ammo_level_badge_width(9) == 22.0f);
+    assert(ammo_level_badge_width(10) == 27.0f);
+    assert(ammo_level_badge_width(99) == 27.0f);
+    assert(ammo_xp_x(42) == 126.0f);
+    assert(ammo_xp_x(92) == 176.0f);
     assert(ammo_xp_y(false) == 55.0f);
     assert(ammo_xp_y(true) == 63.0f);
-    assert(ammo_xp_width(40) == 42.0f);
-    assert(ammo_xp_width(100) == 48.0f);
-    assert(kAmmoXpHeight == 4.0f);
+    assert(ammo_xp_width(40) == 52.0f);
+    assert(ammo_xp_width(100) == 58.0f);
+    assert(kAmmoXpHeight == 5.0f);
+    assert(kAmmoLevelTextSize == 9.0f);
+    assert(ammo_level_x(42) < ammo_xp_x(42));
     assert(kHudElementCount == 13);
     assert(kHudElementStride == 0x90);
     assert(kHudAmmoFadeOffset == 0x70);
@@ -73,7 +84,12 @@ int main() {
     assert(progress_tween(88, 90) == 90);
     assert(progress_tween(100, 90) == 95);
     assert(progress_tween(100, -1) == 95);
-    assert(ammo_xp_color(2) == 0xE65B49FFu);
-    assert(ammo_xp_color(5) == level_color(5));
+    assert(ammo_xp_color(2) == 0xF3A900FFu);
+    assert(ammo_xp_color(5) == 0xF3A900FFu);
+    assert(ammo_xp_highlight() == 0xFFD86BFFu);
+    assert(ammo_track_border() == 0x295F97D0u);
+    assert(ammo_track_fill() == 0x07111FE0u);
+    assert(ammo_level_badge_border() == 0x295F97D0u);
+    assert(ammo_level_badge_fill() == 0x071221E8u);
     return 0;
 }

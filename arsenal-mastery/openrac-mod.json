@@ -4,7 +4,7 @@
   "name": "Arsenal Mastery",
   "version": "0.4.9",
   "author": "AsobiCodes — original developer · Moritz Wallinger — OpenRAC port",
-  "description": "Native ammo-aligned XP HUD beneath the existing counter, live grid XP indicators for owned weapons (1xN and larger), V1–V99 progression, Nanotech and per-save persistence.",
+  "description": "Native RAC1 ammo HUD extension: V-level before the original weapon icon, amber XP strip beneath the untouched ammo counter, live weapon-grid XP indicators, V1–V99 progression, Nanotech and per-save persistence.",
   "license": "MIT",
   "homepage": "https://github.com/AsobiCodes/rac-rs/tree/main/bundled/mods/arsenal-mastery",
   "api": "1.12",

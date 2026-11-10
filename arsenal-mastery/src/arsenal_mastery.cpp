@@ -1198,35 +1198,58 @@ void draw_native_hud(void*, const openrac_overlay* draw) {
     if (weapon < 0 || weapon >= static_cast<int>(weapons().size()) || alpha <= 0) return;
     if (!weapons()[static_cast<std::size_t>(weapon)].has_ammo) return;
 
-    // RAC2-style red weapon XP line, immediately below the existing ammo badge.
-    // The x position and visibility come from that exact game's HUD element.
-    const float x = arsenal::ui::ammo_xp_x(sHudAmmoX.load(std::memory_order_relaxed));
-    const float y = arsenal::ui::ammo_xp_y(std::string(sDisc->version) == "ntsc");
-    const float width = arsenal::ui::ammo_xp_width(sHudAmmoCap.load(std::memory_order_relaxed));
+    const bool ntsc = std::string(sDisc->version) == "ntsc";
+    const int native_x = sHudAmmoX.load(std::memory_order_relaxed);
+    const float xp_x = arsenal::ui::ammo_xp_x(native_x);
+    const float xp_y = arsenal::ui::ammo_xp_y(ntsc);
+    const float xp_width = arsenal::ui::ammo_xp_width(
+        sHudAmmoCap.load(std::memory_order_relaxed));
     const int level = sHudLevel.load(std::memory_order_relaxed);
     const int percent = sHudMax.load(std::memory_order_relaxed) ? 100
                        : sHudSmoothPercent.load(std::memory_order_relaxed);
     const auto fade = [alpha](std::uint32_t color) -> std::uint32_t {
         return arsenal::ui::with_alpha(color, static_cast<int>(color & 0xFFu) * alpha / 255);
     };
-    draw->rect(draw->context, x - 1, y - 1, width + 2, 6, fade(0x396184B4u));
-    draw->rect(draw->context, x, y, width, 4, fade(0x101C30E0u));
-    const float filled = arsenal::ui::filled_width(width - 2, percent);
-    if (filled > 0.0f) {
-        const std::uint32_t color = arsenal::ui::ammo_xp_color(level);
-        draw->rect(draw->context, x + 1, y + 1, filled, 2, fade(color));
-        draw->rect(draw->context, x + 1, y + 1, filled, 1, fade(0xFFD4C9A0u));
-    }
+
+    // Approved RAC1 layout:
+    //   [V-level] [the game's original weapon/ammo icon] [the game's ammo digits]
+    //                                                [XP progress strip]
+    // We only add the V badge and XP strip. The original icon and ammo digits are never redrawn,
+    // replaced or covered, so the display keeps the exact disc-derived RAC1 assets.
     const int remaining = sLevelPopupRemaining.load(std::memory_order_relaxed);
     const int popup_weapon = sLevelPopupWeapon.load(std::memory_order_relaxed);
     const bool popup = remaining > 0 && popup_weapon == weapon;
-    const int popup_alpha = popup ? arsenal::ui::popup_alpha(
-        remaining, std::string(sDisc->version) == "ntsc") : 255;
+    const int popup_alpha = popup ? arsenal::ui::popup_alpha(remaining, ntsc) : 255;
+    const float level_x = arsenal::ui::ammo_level_x(native_x);
+    const float level_y = arsenal::ui::ammo_level_y(ntsc);
+    const float badge_width = arsenal::ui::ammo_level_badge_width(level);
     const auto label = "V" + std::to_string(level);
     const std::uint32_t label_color = popup ? arsenal::ui::level_color(level) : 0xC3E4F6FFu;
-    draw->text(draw->context, x + width + 5, y - 6, popup ? 11.0f : 9.0f,
+    const std::uint32_t badge_border = popup ? arsenal::ui::level_color(level)
+                                             : arsenal::ui::ammo_level_badge_border();
+
+    draw->rect(draw->context, level_x - 1, level_y - 1, badge_width + 2, 13,
+               fade(arsenal::ui::with_alpha(badge_border, popup_alpha)));
+    draw->rect(draw->context, level_x, level_y, badge_width, 11,
+               fade(arsenal::ui::ammo_level_badge_fill()));
+    draw->text(draw->context, level_x + 4, level_y + 1,
+               popup ? 10.0f : arsenal::ui::kAmmoLevelTextSize,
                fade(arsenal::ui::with_alpha(label_color, popup_alpha)), label.c_str());
-    // No extra screen, XP numbers, weapon-name text or floating Nanotech box.
+
+    // XP belongs only to the number side of the native ammo HUD. Keeping it to the right of the
+    // icon is what prevents the 0.4.8 overlap visible in the user's screenshot.
+    draw->rect(draw->context, xp_x - 1, xp_y - 1, xp_width + 2,
+               arsenal::ui::kAmmoXpHeight + 2, fade(arsenal::ui::ammo_track_border()));
+    draw->rect(draw->context, xp_x, xp_y, xp_width, arsenal::ui::kAmmoXpHeight,
+               fade(arsenal::ui::ammo_track_fill()));
+    const float filled = arsenal::ui::filled_width(xp_width - 2, percent);
+    if (filled > 0.0f) {
+        draw->rect(draw->context, xp_x + 1, xp_y + 1, filled,
+                   arsenal::ui::kAmmoXpHeight - 2, fade(arsenal::ui::ammo_xp_color(level)));
+        draw->rect(draw->context, xp_x + 1, xp_y + 1, filled, 1,
+                   fade(arsenal::ui::ammo_xp_highlight()));
+    }
+    // No detached panel, XP number, weapon-name text or floating Nanotech box.
 }
 
 void clean_victim_cache() {
@@ -1252,7 +1275,7 @@ void on_frame() {
     if (!sRuntimeAnnounced && sMod->loaded_level() >= 0) {
         sRuntimeAnnounced = true;
         // Keep load diagnostics, but do not show a non-native mod banner in normal gameplay.
-        sMod->info("Arsenal Mastery 0.4.8 runtime active");
+        sMod->info("Arsenal Mastery 0.4.9 runtime active");
 
     }
     update_hud();
@@ -1364,4 +1387,4 @@ void load(openrac::Mod& mod) {
 
 }  // namespace
 
-OPENRAC_MOD_CPP("arsenal-mastery", "0.4.8", load)
+OPENRAC_MOD_CPP("arsenal-mastery", "0.4.9", load)
